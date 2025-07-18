@@ -12,6 +12,14 @@
       background: rgba(0,0,0,0.5); padding: 10px 16px; border-radius: 8px;
     }
   </style>
+  <!-- Import map: tells browser what "three" means -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.skypack.dev/three@0.152.2"
+    }
+  }
+  </script>
 </head>
 <body>
 <div id="info">
@@ -19,8 +27,8 @@
   Rotate: Drag Mouse &nbsp;&nbsp;|&nbsp;&nbsp; Zoom: Mousewheel
 </div>
 <script type="module">
-  import * as THREE from "https://cdn.skypack.dev/three@0.152.2";
-  import { OrbitControls } from "https://cdn.skypack.dev/three@0.152.2/examples/jsm/controls/OrbitControls";
+  import * as THREE from "three";
+  import { OrbitControls } from "https://cdn.skypack.dev/three@0.152.2/examples/jsm/controls/OrbitControls.js";
 
   // -------------- SCENE SETUP --------------
   const scene = new THREE.Scene();
