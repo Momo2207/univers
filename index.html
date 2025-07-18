@@ -10,7 +10,7 @@
       top: 10px; left: 10px;
       color: #ddd; font-family: sans-serif;
       background: rgba(0,0,0,0.5); padding: 10px 16px; border-radius: 8px;
-      z-index: 100; /* UI layer */
+      z-index: 100;
     }
     #info b { color: #fff; }
     #bigBangButton {
@@ -27,17 +27,20 @@
       border-radius: 8px;
       cursor: pointer;
       transition: background 0.2s;
-      /* THE FIX: Give the button the highest z-index to ensure it's on top */
       z-index: 101; 
     }
     #bigBangButton:hover { background: #e74c3c; }
   </style>
   
+  <!-- 
+    This importmap uses unpkg.com, a reliable CDN that serves the correct
+    file types and solves the MIME type errors.
+  -->
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/"
+      "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/"
     }
   }
   </script>
@@ -111,17 +114,24 @@
   const particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
   scene.add(particleSystem);
 
+  // Post-processing setup for "trails"
   const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
   
   const feedbackShader = {
-    uniforms: { tDiffuse: { value: null }, u_feedback: { value: 0.95 } },
+    uniforms: { tDiffuse: { value: null }, u_feedback: { value: 0.94 } },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `uniform sampler2D tDiffuse; uniform float u_feedback; varying vec2 vUv; void main() { gl_FragColor = texture2D(tDiffuse, vUv) * u_feedback; }`
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float u_feedback;
+      varying vec2 vUv;
+      void main() {
+        vec4 texel = texture2D(tDiffuse, vUv);
+        gl_FragColor = texel * u_feedback;
+      }`
   };
   const feedbackPass = new ShaderPass(feedbackShader);
-  const renderScene = new RenderPass(scene, camera);
-  composer.addPass(renderScene);
   composer.addPass(feedbackPass);
   composer.addPass(new OutputPass());
 
@@ -130,13 +140,11 @@
     bodies = [];
     for (let i = 0; i < NUM_BODIES; i++) {
         const mass = 0.1 + Math.random() * 2.0;
-        const body = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), force: new THREE.Vector3(), mass: mass, };
+        const body = { pos: new THREE.Vector3(), vel: new THREE.Vector3(), force: new THREE.Vector3(), mass: mass };
         bodies.push(body);
         const color = new THREE.Color();
         color.setHSL(0.6 - (mass / 2.1) * 0.5, 1.0, 0.6);
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
+        colors[i * 3] = color.r; colors[i * 3 + 1] = color.g; colors[i * 3 + 2] = color.b;
     }
   }
 
@@ -152,10 +160,11 @@
   }
 
   function simulate(dt) {
-    const worldBoundary = new THREE.Box3(new THREE.Vector3(-2000, -2000, -2000), new THREE.Vector3(2000, 2000, 2000));
+    const worldBoundary = new THREE.Box3(new THREE.Vector3(-3000, -3000, -3000), new THREE.Vector3(3000, 3000, 3000));
     let root = new Octree(worldBoundary);
     for (const body of bodies) root.insert(body);
     root.computeMassDistribution();
+    
     let totalDistance = 0;
     for (const body of bodies) {
       body.force.set(0, 0, 0);
@@ -178,9 +187,7 @@
   }
   
   // -------------- MAIN LOOP --------------
-  let clock = new THREE.Clock();
   function animate() {
-    requestAnimationFrame(animate);
     controls.update();
     simulate(0.2);
 
@@ -191,15 +198,7 @@
     }
     particlesGeometry.attributes.position.needsUpdate = true;
     
-    // I had to fix the post-processing loop as well to get the trails to work properly
-    // This is a common setup for feedback loops
-    renderer.autoClear = false;
-    renderer.clear();
-    camera.layers.set(1); // render the feedback buffer
     composer.render();
-    renderer.clearDepth();
-    camera.layers.set(0); // render the actual scene
-    renderer.render(scene, camera);
   }
   
   // -------------- INITIALIZATION & EVENTS --------------
@@ -213,8 +212,6 @@
     composer.setSize(window.innerWidth, window.innerHeight);
   });
   
-  // I had to correct the animation call slightly to get the trails working
-  // This is a better way to do it.
   renderer.setAnimationLoop(animate);
 
 </script>
