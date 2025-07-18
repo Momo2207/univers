@@ -15,10 +15,18 @@
     #info a { color: #8af; }
   </style>
   
-  <!-- The working script setup from before -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.152.2/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.152.2/examples/js/controls/OrbitControls.js"></script>
-
+  <!-- 
+    The importmap tells the browser where to find the Three.js library and its addons
+    when we use 'import'. This is the modern, recommended way.
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
 <div id="info">
@@ -28,19 +36,26 @@
   Rotate: Drag Mouse   |   Zoom: Mousewheel
 </div>
 
-<script>
-  // -------------- SCENE SETUP (Largely unchanged) --------------
+<!-- This script is a "module" to allow the use of 'import' statements. -->
+<script type="module">
+
+  // Import the main Three.js library and the OrbitControls addon.
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  // -------------- SCENE SETUP --------------
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000); // Darker background for space
+  scene.background = new THREE.Color(0x000000);
 
   const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
-  camera.position.set(0, 150, 400); // Pulled back to see the whole system
+  camera.position.set(0, 150, 400);
 
   const renderer = new THREE.WebGLRenderer({antialias: true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
-
-  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  
+  // OrbitControls is now imported directly, not as a property of THREE.
+  const controls = new OrbitControls(camera, renderer.domElement);
   
   // Add a faint ambient light to give spheres some dimension
   scene.add(new THREE.AmbientLight(0xffffff, 0.1));
@@ -79,7 +94,6 @@
       (Math.random()-0.5)*0.2
     ));
 
-
     // --- Mass & Appearance ---
     const mass = BODY_MASS_MIN + Math.random() * (BODY_MASS_MAX - BODY_MASS_MIN);
     const radius = Math.cbrt(mass) * 0.8; // Radius proportional to cube root of mass
@@ -99,7 +113,7 @@
     bodies.push({ pos, vel, mass, mesh });
   }
 
-  // -------------- PHYSICS SIMULATION (Completely new logic) --------------
+  // -------------- PHYSICS SIMULATION --------------
   const force = new THREE.Vector3();
   const delta = new THREE.Vector3();
 
@@ -133,19 +147,17 @@
     
     // --- Integration ---
     // Once all forces are calculated, update all positions.
-    // This is done in a separate loop to ensure we use the positions from the *start*
-    // of the timestep for all force calculations (a method called "kick-drift").
     for (let i = 0; i < NUM_BODIES; i++) {
       let body = bodies[i];
       body.pos.add(body.vel.clone().multiplyScalar(dt));
     }
   }
 
-  // -------------- RENDER LOOP (Simplified update logic) --------------
+  // -------------- RENDER LOOP --------------
   function animate() {
     requestAnimationFrame(animate);
     
-    // Use a smaller, more stable time step for the simulation
+    // Use a small, stable time step for the simulation
     simulate(0.1); 
 
     // Update the visual representation of each body
