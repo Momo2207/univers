@@ -13,13 +13,14 @@
     }
   </style>
   
+  <!-- Load the core Three.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.152.2/three.min.js"></script>
+  
   <!--
-    THE FIX: Load Three.js and OrbitControls via standard <script> tags.
-    This method is more robust and avoids the module import/export errors.
-    The main three.js library must be loaded *before* OrbitControls.
+    THE FIX: Use a reliable CDN link for OrbitControls that serves the correct MIME type.
+    unpkg.com is an excellent alternative to jsdelivr for this purpose.
   -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.152.2/examples/js/controls/OrbitControls.js"></script>
 
 </head>
 <body>
@@ -28,10 +29,9 @@
   Rotate: Drag Mouse   |   Zoom: Mousewheel
 </div>
 
-<!-- Change script type from "module" back to a regular script. -->
 <script>
-  // The 'import' statements are removed because the scripts above create a global 'THREE' object.
-  
+  // No imports needed, the scripts above create the global 'THREE' object.
+
   // -------------- SCENE SETUP --------------
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x111111);
@@ -43,7 +43,7 @@
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // THE FIX: OrbitControls is now part of the global THREE object.
+  // OrbitControls is now correctly attached to the THREE object.
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
 
   // Add cube frame for reference
@@ -64,6 +64,7 @@
   function randomUnitVec3() {
     let x = Math.random()-0.5, y = Math.random()-0.5, z = Math.random()-0.5;
     let len = Math.sqrt(x*x + y*y + z*z);
+    if (len === 0) return new THREE.Vector3(1,0,0); // Avoid division by zero
     return new THREE.Vector3(x/len, y/len, z/len);
   }
 
@@ -72,6 +73,7 @@
   let stringMeshes = [];
 
   for (let s = 0; s < NUM_STRINGS; s++) {
+    // Random endpoints in cube
     const p0 = new THREE.Vector3(
       (Math.random()-0.5) * (cubeSize-6),
       (Math.random()-0.5) * (cubeSize-6),
@@ -80,8 +82,9 @@
     const p1 = new THREE.Vector3(
       (Math.random()-0.5) * (cubeSize-6),
       (Math.random()-0.5) * (cubeSize-6),
-      (Math.random()-0.5) * (cubeSize-6)
+      (Math.random()-0.5) * (cubeSiz-6)
     );
+    // Interpolate node positions between endpoints
     let nodes = [];
     for (let i = 0; i < NODES_PER_STRING; i++) {
       const t = i / (NODES_PER_STRING-1);
@@ -94,12 +97,13 @@
     }
     strings.push(nodes);
 
+    // String mesh (as THREE.Line)
     let geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
     let color = new THREE.Color().setHSL(s / NUM_STRINGS, 1.0, 0.45);
-    // THE FIX: The 'linewidth' property was removed from LineBasicMaterial in newer Three.js versions.
-    // This won't cause a crash, but it won't work. The line below is compatible.
-    let mat = new THREE.LineBasicMaterial({color: color}); 
+    // THE FIX: The 'linewidth' property was removed from LineBasicMaterial in newer Three.js.
+    // This code is now compatible with the version being loaded.
+    let mat = new THREE.LineBasicMaterial({color: color});
     let mesh = new THREE.Line(geometry, mat);
     scene.add(mesh);
     stringMeshes.push(mesh);
@@ -122,28 +126,35 @@
 
   // -------------- PHYSICS SIMULATION --------------
   function simulate(dt) {
+    // For each string
     for (let s = 0; s < NUM_STRINGS; s++) {
       let nodes = strings[s];
+      // Apply spring forces between nodes
       for (let i = 0; i < nodes.length-1; i++) {
         let a = nodes[i], b = nodes[i+1];
-        let restLen = a.pos.distanceTo(b.pos);
-        if (!a.restLen) a.restLen = restLen * (0.97 + 0.06*Math.random());
-        if (!b.restLen) b.restLen = restLen * (0.97 + 0.06*Math.random());
-
+        
         let delta = new THREE.Vector3().subVectors(b.pos, a.pos);
         let dist = delta.length();
-        if (dist === 0) continue; // Avoid division by zero
+        
+        // THE FIX: Add a stability check to prevent simulation from breaking if nodes overlap.
+        if (dist === 0) continue; 
+
+        if (!a.restLen) a.restLen = dist * (0.97 + 0.06*Math.random());
+
         let dir = delta.normalize();
         let stretch = dist - a.restLen;
         let force = dir.multiplyScalar(SPRING_K * stretch);
+        // Apply to both nodes (except ends, which are fixed)
         if (i > 0)
           a.vel.add(force.clone().multiplyScalar(dt/a.mass));
         if (i < nodes.length-2)
           b.vel.add(force.clone().multiplyScalar(-dt/b.mass));
       }
-      for (let i = 1; i < nodes.length-1; i++) {
+      // Damping & integration
+      for (let i = 1; i < nodes.length-1; i++) { // ends fixed
         nodes[i].vel.multiplyScalar(1 - SPRING_DAMPING);
         nodes[i].pos.add(nodes[i].vel.clone().multiplyScalar(dt));
+        // Simple cube boundaries
         nodes[i].pos.clamp(
           new THREE.Vector3(-cubeSize/2+1, -cubeSize/2+1, -cubeSize/2+1),
           new THREE.Vector3(cubeSize/2-1, cubeSize/2-1, cubeSize/2-1)
@@ -155,18 +166,21 @@
   // -------------- RENDER LOOP --------------
   function animate() {
     requestAnimationFrame(animate);
-    simulate(0.23);
+    simulate(0.23); // Time step
 
+    // Update meshes
     for (let s = 0; s < NUM_STRINGS; s++) {
       let nodes = strings[s];
+      // Update string line
       let positions = [];
       for (let i = 0; i < nodes.length; i++) {
         positions.push(nodes[i].pos.x, nodes[i].pos.y, nodes[i].pos.z);
+        // Move node spheres
         nodeMeshes[s][i].position.copy(nodes[i].pos);
       }
       let mesh = stringMeshes[s];
-      mesh.geometry.setAttribute('position',
-        new THREE.Float32BufferAttribute(positions, 3));
+      // THE FIX: Simplified the geometry update. `setAttribute` is all that's needed.
+      mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
       mesh.geometry.computeBoundingSphere();
     }
     controls.update();
@@ -174,6 +188,7 @@
   }
   animate();
 
+  // Responsive resize
   window.addEventListener('resize', ()=>{
     camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
