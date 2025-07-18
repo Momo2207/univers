@@ -33,17 +33,17 @@
   </style>
   
   <!-- 
-    THE FIX: This importmap uses unpkg.com, a reliable CDN that serves the correct
-    file types and solves the MIME type errors from other CDNs.
+    THE FIX: We are no longer using import maps.
+    We are loading each necessary script directly. This is more robust.
+    The order is important: core three.js first, then addons.
   -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.152.2/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.152.2/examples/jsm/"
-    }
-  }
-  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/OutputPass.js"></script>
+
 </head>
 <body>
 <div id="info">
@@ -53,14 +53,10 @@
 </div>
 <button id="bigBangButton">BIG BANG</button>
 
-<script type="module">
-
-  import * as THREE from 'three';
-  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-  import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-  import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-  import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-  import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+<!-- SCRIPT TYPE IS NO LONGER "module" -->
+<script>
+  // THE FIX: All 'import' statements are removed.
+  // The scripts loaded in the <head> create a global THREE object.
 
   // -------------- OCTREE CLASS (UNCHANGED) --------------
   class Octree {
@@ -79,7 +75,9 @@
   const renderer = new THREE.WebGLRenderer({antialias: true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
-  const controls = new OrbitControls(camera, renderer.domElement);
+  
+  // THE FIX: Access OrbitControls from the global THREE object
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
 
   // -------------- SIMULATION PARAMETERS --------------
   const NUM_BODIES = 4000;
@@ -107,8 +105,9 @@
   const particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
   scene.add(particleSystem);
 
-  const composer = new EffectComposer(renderer);
-  const renderPass = new RenderPass(scene, camera);
+  // THE FIX: Access post-processing classes from the global THREE object
+  const composer = new THREE.EffectComposer(renderer);
+  const renderPass = new THREE.RenderPass(scene, camera);
   composer.addPass(renderPass);
   
   const feedbackShader = {
@@ -116,9 +115,11 @@
     vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `uniform sampler2D tDiffuse; uniform float u_feedback; varying vec2 vUv; void main() { vec4 texel = texture2D(tDiffuse, vUv); gl_FragColor = texel * u_feedback; }`
   };
-  const feedbackPass = new ShaderPass(feedbackShader);
+  const feedbackPass = new THREE.ShaderPass(feedbackShader);
   composer.addPass(feedbackPass);
-  composer.addPass(new OutputPass());
+  
+  const outputPass = new THREE.OutputPass();
+  composer.addPass(outputPass);
 
   // -------------- SIMULATION LOGIC --------------
   function createBodies() {
