@@ -33,18 +33,16 @@
   </style>
   
   <!-- 
-    THE DEFINITIVE FIX:
-    We are no longer using import maps or modules.
-    We are loading each necessary script directly using the classic method.
-    This is the most robust way to ensure all files are loaded correctly.
-    The order is important: core three.js first, then its addons.
+    THE UNBREAKABLE FIX:
+    Loading all scripts from a local 'js' folder inside the repository.
+    This eliminates all external network dependencies and cannot be blocked.
   -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/EffectComposer.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/RenderPass.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/ShaderPass.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/postprocessing/OutputPass.js"></script>
+  <script src="js/three.min.js"></script>
+  <script src="js/OrbitControls.js"></script>
+  <script src="js/EffectComposer.js"></script>
+  <script src="js/RenderPass.js"></script>
+  <script src="js/ShaderPass.js"></script>
+  <script src="js/OutputPass.js"></script>
 
 </head>
 <body>
@@ -55,10 +53,8 @@
 </div>
 <button id="bigBangButton">BIG BANG</button>
 
-<!-- SCRIPT TYPE IS NO LONGER "module" -->
 <script>
-  // THE FIX: All 'import' statements are removed.
-  // The scripts loaded in the <head> create a global THREE object that we will use.
+  // All 'import' logic is removed. We use the global THREE object.
 
   // -------------- OCTREE CLASS (UNCHANGED) --------------
   class Octree {
@@ -78,7 +74,6 @@
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
   
-  // THE FIX: Access OrbitControls from the global THREE object
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
 
   // -------------- SIMULATION PARAMETERS --------------
@@ -107,7 +102,6 @@
   const particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
   scene.add(particleSystem);
 
-  // THE FIX: Access post-processing classes from the global THREE object
   const composer = new THREE.EffectComposer(renderer);
   const renderPass = new THREE.RenderPass(scene, camera);
   composer.addPass(renderPass);
