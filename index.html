@@ -33,8 +33,8 @@
   </style>
   
   <!-- 
-    This importmap uses unpkg.com, a reliable CDN that serves the correct
-    file types and solves the MIME type errors.
+    THE FIX: This importmap uses unpkg.com, a reliable CDN that serves the correct
+    file types and solves the MIME type errors from other CDNs.
   -->
   <script type="importmap">
   {
@@ -103,18 +103,10 @@
 
   const textureLoader = new THREE.TextureLoader();
   const particleTexture = textureLoader.load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAJ9SURBVFhH7VdNaBtlGP7eO3fawHTaJG02CVVCvBBiQuFCEZJ4Y4f+QdD2QkFE3BUiCF4kxIWbIAiCdCpVKgg+uBUV3EmwcBLRhtQkTTaJTRqT/WNnZ9/3vneTj8zTzOp4//e87/vO837ed74HJKjVajUsyfATiOTzfZ3L5fKdSqX+A+AZgYmk02k8Ho9P5XKZvc/n08lkssjxeNysVquHYrG4oSiKkM/ne/iViuM43L1eL0oVCoV+HA6HJ5PL5Xovz/M832q1WrYsy3p9ff1msVgYCoVCSJbldV3XnE6naDQakU6nUavVWq9Wq03LsgK4D0Q8Ho+r2+2+lUrlP4C9iGAymXyUSqXfIBAIz3d9jzjO43w+v5lMJo9iPplMrlAoFPICkGg0Gg/D4bDRaLTK5XLLBkMqlUJ+vx/lckkymcRyuSQYDIJgMIhSqQT9fj/6/T7hcBgOhwOhUAh0Oh18Ph/lcgmRTCaRz+ehUqlQqVRgMpmQaDQIZjIRYDweB4vFAovFAofDAWfUarWo1WqwWCzQarVgsVjQ6XQwnU4hHo+DdruNz+dDqVRCtVpFtVpFtVoNj8dDpVLBYDAA/oBDnU7HdrvdaLVaP+B5/rFarV4JBAK7oH4YDAY/azabre/3+4/FYnErlUpnKpXKffx+vy+TyXStVmtJkqSyrut2uVzuW63WwzAM3+fz4Xq9vsVisflkMvmwKIqXwWAQDocjk8vlL8bjeL/fTzKZDG4hxnEcCAQC+/1+fzab/b1er48kyZLX6/V5lmU9q9XaCoKg9/v9d9fVajW5XO5yOp0Ox+Oxt3K5/P7hcJjP5/N+v38yGo3Gz+dz36uKx+PB6XTaCoLgcrvdYfAYDAYymcyv5fP5/AsLCwugQv8SYACjP/s+mS0vCAAAAABJRU5ErkJggg==');
-  const particlesMaterial = new THREE.PointsMaterial({
-    size: 15,
-    map: particleTexture,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    transparent: true,
-    vertexColors: true
-  });
+  const particlesMaterial = new THREE.PointsMaterial({ size: 15, map: particleTexture, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, vertexColors: true });
   const particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
   scene.add(particleSystem);
 
-  // Post-processing setup for "trails"
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
@@ -122,14 +114,7 @@
   const feedbackShader = {
     uniforms: { tDiffuse: { value: null }, u_feedback: { value: 0.94 } },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      uniform sampler2D tDiffuse;
-      uniform float u_feedback;
-      varying vec2 vUv;
-      void main() {
-        vec4 texel = texture2D(tDiffuse, vUv);
-        gl_FragColor = texel * u_feedback;
-      }`
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float u_feedback; varying vec2 vUv; void main() { vec4 texel = texture2D(tDiffuse, vUv); gl_FragColor = texel * u_feedback; }`
   };
   const feedbackPass = new ShaderPass(feedbackShader);
   composer.addPass(feedbackPass);
