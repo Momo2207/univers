@@ -12,23 +12,28 @@
       background: rgba(0,0,0,0.5); padding: 10px 16px; border-radius: 8px;
     }
   </style>
-  <!-- Import map: tells browser what "three" means -->
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.skypack.dev/three@0.152.2"
-    }
-  }
-  </script>
+  
+  <!--
+    FIX 1: Load Three.js and OrbitControls via standard <script> tags.
+    This is more robust and doesn't rely on import maps.
+    The main three.js library must be loaded *before* OrbitControls.
+  -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.152.2/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/controls/OrbitControls.js"></script>
+
 </head>
 <body>
 <div id="info">
   <b>3D String Universe Simulation</b><br>
-  Rotate: Drag Mouse &nbsp;&nbsp;|&nbsp;&nbsp; Zoom: Mousewheel
+  Rotate: Drag Mouse   |   Zoom: Mousewheel
 </div>
-<script type="module">
-  import * as THREE from "three";
-  import { OrbitControls } from "https://cdn.skypack.dev/three@0.152.2/examples/jsm/controls/OrbitControls.js";
+
+<!-- FIX 2: Change the script type from "module" back to a regular script. -->
+<script>
+  // FIX 3: Remove the 'import' statements.
+  // The scripts loaded above create a global 'THREE' object that we can use directly.
+  // import * as THREE from "three";
+  // import { OrbitControls } from "https://cdn.skypack.dev/three@0.152.2/examples/jsm/controls/OrbitControls.js";
 
   // -------------- SCENE SETUP --------------
   const scene = new THREE.Scene();
@@ -42,7 +47,8 @@
   document.body.appendChild(renderer.domElement);
 
   // Orbit controls for 3D rotation
-  const controls = new OrbitControls(camera, renderer.domElement);
+  // FIX 4: OrbitControls is now part of the global THREE object.
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
 
   // Add cube frame for reference
   const cubeSize = 40;
