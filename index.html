@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>N-Body Gravitational Simulation</title>
+  <title>Optimized N-Body Simulation (Octree)</title>
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
     #info {
@@ -15,10 +15,6 @@
     #info a { color: #8af; }
   </style>
   
-  <!-- 
-    The importmap tells the browser where to find the Three.js library and its addons
-    when we use 'import'. This is the modern, recommended way.
-  -->
   <script type="importmap">
   {
     "imports": {
@@ -30,125 +26,223 @@
 </head>
 <body>
 <div id="info">
-  <b>N-Body Gravitational Simulation</b><br>
-  Every body attracts every other body.<br>
-  Larger size & whiter color = more massive.<br>
+  <b>Optimized N-Body Simulation (Octree)</b><br>
+  Using Barnes-Hut algorithm for O(n log n) performance.<br>
   Rotate: Drag Mouse   |   Zoom: Mousewheel
 </div>
 
-<!-- This script is a "module" to allow the use of 'import' statements. -->
 <script type="module">
 
-  // Import the main Three.js library and the OrbitControls addon.
   import * as THREE from 'three';
   import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  // -------------- THE OCTREE CLASS (BARNES-HUT) --------------
+  class Octree {
+    constructor(boundary) {
+      this.boundary = boundary; // A THREE.Box3
+      this.bodies = []; // Bodies in this node
+      this.children = null; // 8 child octrees
+      
+      // Properties for Barnes-Hut approximation
+      this.mass = 0;
+      this.centerOfMass = new THREE.Vector3();
+    }
+
+    insert(body) {
+      // If body is outside this node's boundary, ignore it
+      if (!this.boundary.containsPoint(body.pos)) {
+        return false;
+      }
+
+      // If there's space in this node, add the body
+      if (this.bodies.length < 1 && this.children === null) {
+        this.bodies.push(body);
+        return true;
+      }
+
+      // If this node is a leaf, but now needs to hold more, subdivide it
+      if (this.children === null) {
+        this.subdivide();
+      }
+
+      // If this node had a body, push it down to a child
+      if (this.bodies.length > 0) {
+        let existingBody = this.bodies.pop();
+        this.insertIntoChildren(existingBody);
+      }
+      
+      // Insert the new body into the appropriate child
+      this.insertIntoChildren(body);
+      
+      return true;
+    }
+    
+    insertIntoChildren(body) {
+      for (let i = 0; i < 8; i++) {
+        if (this.children[i].insert(body)) {
+          return;
+        }
+      }
+    }
+
+    subdivide() {
+      this.children = [];
+      const size = new THREE.Vector3();
+      this.boundary.getSize(size);
+      const halfSize = size.clone().multiplyScalar(0.5);
+      const center = new THREE.Vector3();
+      this.boundary.getCenter(center);
+      
+      const childCenters = [
+        new THREE.Vector3(center.x - halfSize.x/2, center.y + halfSize.y/2, center.z - halfSize.z/2), // Top-Left-Front
+        new THREE.Vector3(center.x + halfSize.x/2, center.y + halfSize.y/2, center.z - halfSize.z/2), // Top-Right-Front
+        new THREE.Vector3(center.x - halfSize.x/2, center.y - halfSize.y/2, center.z - halfSize.z/2), // Bottom-Left-Front
+        new THREE.Vector3(center.x + halfSize.x/2, center.y - halfSize.y/2, center.z - halfSize.z/2), // Bottom-Right-Front
+        new THREE.Vector3(center.x - halfSize.x/2, center.y + halfSize.y/2, center.z + halfSize.z/2), // Top-Left-Back
+        new THREE.Vector3(center.x + halfSize.x/2, center.y + halfSize.y/2, center.z + halfSize.z/2), // Top-Right-Back
+        new THREE.Vector3(center.x - halfSize.x/2, center.y - halfSize.y/2, center.z + halfSize.z/2), // Bottom-Left-Back
+        new THREE.Vector3(center.x + halfSize.x/2, center.y - halfSize.y/2, center.z + halfSize.z/2)  // Bottom-Right-Back
+      ];
+
+      for (let i = 0; i < 8; i++) {
+        let min = new THREE.Vector3().subVectors(childCenters[i], halfSize.clone().multiplyScalar(0.5));
+        let max = new THREE.Vector3().addVectors(childCenters[i], halfSize.clone().multiplyScalar(0.5));
+        this.children.push(new Octree(new THREE.Box3(min, max)));
+      }
+    }
+    
+    computeMassDistribution() {
+      if (this.children) {
+        // This is an internal node
+        this.mass = 0;
+        this.centerOfMass.set(0, 0, 0);
+        for (const child of this.children) {
+          child.computeMassDistribution();
+          this.mass += child.mass;
+          this.centerOfMass.add(child.centerOfMass.clone().multiplyScalar(child.mass));
+        }
+        if (this.mass > 0) {
+          this.centerOfMass.divideScalar(this.mass);
+        }
+      } else if (this.bodies.length > 0) {
+        // This is a leaf node
+        const body = this.bodies[0];
+        this.mass = body.mass;
+        this.centerOfMass.copy(body.pos);
+      } else {
+        // Empty leaf node
+        this.mass = 0;
+        this.centerOfMass.set(0,0,0);
+      }
+    }
+    
+    calculateForce(body, theta, G, softening) {
+      let force = new THREE.Vector3();
+      
+      if (this.mass === 0 || (this.bodies.length > 0 && this.bodies[0] === body)) {
+        return force;
+      }
+      
+      const s = this.boundary.getSize(new THREE.Vector3()).x; // Width of the region
+      const d = body.pos.distanceTo(this.centerOfMass); // Distance to center of mass
+
+      if ((s / d) < theta) {
+        // Node is far enough away, approximate as a single body
+        const delta = new THREE.Vector3().subVectors(this.centerOfMass, body.pos);
+        const distSq = d*d + softening;
+        const forceMag = (G * body.mass * this.mass) / distSq;
+        force.add(delta.normalize().multiplyScalar(forceMag));
+      } else {
+        // Node is too close, traverse its children
+        if (this.children) {
+          for (const child of this.children) {
+            force.add(child.calculateForce(body, theta, G, softening));
+          }
+        } else { // It's a leaf node with a different body
+          const otherBody = this.bodies[0];
+          const delta = new THREE.Vector3().subVectors(otherBody.pos, body.pos);
+          const distSq = delta.lengthSq() + softening;
+          const forceMag = (G * body.mass * otherBody.mass) / distSq;
+          force.add(delta.normalize().multiplyScalar(forceMag));
+        }
+      }
+      return force;
+    }
+  }
+
 
   // -------------- SCENE SETUP --------------
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
-  camera.position.set(0, 150, 400);
-
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+  camera.position.set(0, 500, 1200);
   const renderer = new THREE.WebGLRenderer({antialias: true});
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
-  
-  // OrbitControls is now imported directly, not as a property of THREE.
   const controls = new OrbitControls(camera, renderer.domElement);
-  
-  // Add a faint ambient light to give spheres some dimension
   scene.add(new THREE.AmbientLight(0xffffff, 0.1));
 
   // -------------- N-BODY SIMULATION DEFINITION --------------
   const NUM_BODIES = 2500;
-  const G = 0.5; // Gravitational constant - tune for best results
-  const INITIAL_SPREAD = 200; // How large is the initial cluster
+  const G = 0.8;
+  const INITIAL_SPREAD = 800;
   const BODY_MASS_MIN = 0.1;
-  const BODY_MASS_MAX = 3.5;
-  
-  // A critical factor to prevent extreme forces when particles get too close.
-  // It avoids the 1/r^2 singularity, making the simulation stable.
-  const SOFTENING_FACTOR = 5.0; 
+  const BODY_MASS_MAX = 4.0;
+  const SOFTENING_FACTOR = 10.0;
+  const THETA = 0.7; // Barnes-Hut approximation parameter. 0 = exact (slow), > 1 = very inaccurate. 0.5-0.8 is a good range.
 
   let bodies = [];
 
   for (let i = 0; i < NUM_BODIES; i++) {
-    // --- Position: Create a spherical distribution ---
     const theta = Math.random() * 2 * Math.PI;
     const phi = Math.acos(2 * Math.random() - 1);
-    const r = Math.cbrt(Math.random()) * INITIAL_SPREAD; // Cube root for uniform volume
-    
+    const r = Math.cbrt(Math.random()) * INITIAL_SPREAD;
     const pos = new THREE.Vector3(
       r * Math.sin(phi) * Math.cos(theta),
       r * Math.sin(phi) * Math.sin(theta),
       r * Math.cos(phi)
     );
-
-    // --- Velocity: Give initial tangential velocity for a "galaxy disk" effect ---
     const vel = new THREE.Vector3(-pos.y, pos.x, 0).normalize();
-    vel.multiplyScalar(Math.sqrt(G * NUM_BODIES / (r + 1)) * 0.3); // Scale velocity
-    vel.add(new THREE.Vector3(
-      (Math.random()-0.5)*0.2, 
-      (Math.random()-0.5)*0.2, 
-      (Math.random()-0.5)*0.2
-    ));
-
-    // --- Mass & Appearance ---
+    vel.multiplyScalar(Math.sqrt(G * NUM_BODIES / (r + 1)) * 0.4);
+    vel.add(new THREE.Vector3((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5));
     const mass = BODY_MASS_MIN + Math.random() * (BODY_MASS_MAX - BODY_MASS_MIN);
-    const radius = Math.cbrt(mass) * 0.8; // Radius proportional to cube root of mass
-    
-    const color = new THREE.Color();
-    // Color map: low mass is red/orange, high mass is yellow/white
-    color.setHSL(0.15 - (mass / BODY_MASS_MAX) * 0.15, 1.0, 0.5 + (mass / BODY_MASS_MAX) * 0.4);
-    
+    const radius = Math.cbrt(mass) * 1.2;
+    const color = new THREE.Color().setHSL(0.15 - (mass / BODY_MASS_MAX) * 0.15, 1.0, 0.5 + (mass / BODY_MASS_MAX) * 0.4);
     const material = new THREE.MeshBasicMaterial({ color: color });
-    const geometry = new THREE.SphereGeometry(radius, 12, 12);
+    const geometry = new THREE.SphereGeometry(radius, 8, 8); // Reduced sphere detail for performance
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.copy(pos);
-    
     scene.add(mesh);
-
-    // Store everything in a single object for easy access
-    bodies.push({ pos, vel, mass, mesh });
+    bodies.push({ pos, vel, mass, mesh, force: new THREE.Vector3() });
   }
 
-  // -------------- PHYSICS SIMULATION --------------
-  const force = new THREE.Vector3();
-  const delta = new THREE.Vector3();
-
+  // -------------- PHYSICS SIMULATION (REWRITTEN) --------------
   function simulate(dt) {
-    // This is an O(n^2) calculation: every body interacts with every other body.
-    for (let i = 0; i < NUM_BODIES; i++) {
-      let bodyA = bodies[i];
-      // Reset force for this frame
-      force.set(0, 0, 0);
+    // 1. Create the root of the Octree, ensuring it's large enough
+    const worldBoundary = new THREE.Box3(
+        new THREE.Vector3(-INITIAL_SPREAD*2, -INITIAL_SPREAD*2, -INITIAL_SPREAD*2),
+        new THREE.Vector3(INITIAL_SPREAD*2, INITIAL_SPREAD*2, INITIAL_SPREAD*2)
+    );
+    let root = new Octree(worldBoundary);
 
-      for (let j = 0; j < NUM_BODIES; j++) {
-        if (i === j) continue;
-        let bodyB = bodies[j];
+    // 2. Insert all bodies into the Octree
+    for (const body of bodies) {
+      root.insert(body);
+    }
 
-        delta.subVectors(bodyB.pos, bodyA.pos);
-        
-        // Use squared length for performance, and add softening factor
-        let distSq = delta.lengthSq() + SOFTENING_FACTOR;
-        
-        // Newton's Law of Gravitation: F = G * (m1 * m2) / r^2
-        let forceMag = (G * bodyA.mass * bodyB.mass) / distSq;
-        
-        // Add this force to the total force on bodyA
-        force.add(delta.normalize().multiplyScalar(forceMag));
-      }
+    // 3. Compute the mass distribution for the entire tree
+    root.computeMassDistribution();
 
-      // Update velocity using acceleration (a = F/m)
-      // v_new = v_old + a * dt  =>  v_new = v_old + (F/m) * dt
-      bodyA.vel.add(force.multiplyScalar(dt / bodyA.mass));
+    // 4. Calculate forces using the Octree
+    for (const body of bodies) {
+      body.force.set(0, 0, 0); // Reset force from previous frame
+      body.force.add(root.calculateForce(body, THETA, G, SOFTENING_FACTOR));
     }
     
-    // --- Integration ---
-    // Once all forces are calculated, update all positions.
-    for (let i = 0; i < NUM_BODIES; i++) {
-      let body = bodies[i];
+    // 5. Integration (update velocity and position)
+    for (const body of bodies) {
+      const acceleration = body.force.clone().divideScalar(body.mass);
+      body.vel.add(acceleration.multiplyScalar(dt));
       body.pos.add(body.vel.clone().multiplyScalar(dt));
     }
   }
@@ -157,10 +251,8 @@
   function animate() {
     requestAnimationFrame(animate);
     
-    // Use a small, stable time step for the simulation
-    simulate(0.1); 
+    simulate(0.15); // A slightly larger time step can work with the stable algorithm
 
-    // Update the visual representation of each body
     for (let i = 0; i < NUM_BODIES; i++) {
       let body = bodies[i];
       body.mesh.position.copy(body.pos);
@@ -177,6 +269,7 @@
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
+
 </script>
 </body>
 </html>
