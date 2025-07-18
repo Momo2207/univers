@@ -33,9 +33,11 @@
   </style>
   
   <!-- 
-    THE FIX: We are no longer using import maps.
-    We are loading each necessary script directly. This is more robust.
-    The order is important: core three.js first, then addons.
+    THE DEFINITIVE FIX:
+    We are no longer using import maps or modules.
+    We are loading each necessary script directly using the classic method.
+    This is the most robust way to ensure all files are loaded correctly.
+    The order is important: core three.js first, then its addons.
   -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r152/examples/js/controls/OrbitControls.js"></script>
@@ -56,7 +58,7 @@
 <!-- SCRIPT TYPE IS NO LONGER "module" -->
 <script>
   // THE FIX: All 'import' statements are removed.
-  // The scripts loaded in the <head> create a global THREE object.
+  // The scripts loaded in the <head> create a global THREE object that we will use.
 
   // -------------- OCTREE CLASS (UNCHANGED) --------------
   class Octree {
@@ -117,7 +119,6 @@
   };
   const feedbackPass = new THREE.ShaderPass(feedbackShader);
   composer.addPass(feedbackPass);
-  
   const outputPass = new THREE.OutputPass();
   composer.addPass(outputPass);
 
