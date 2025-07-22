@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pitch-Control Gesture Synthesizer</title>
+    <title>Stable Pitch-Control Synthesizer</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -53,7 +53,7 @@
     </style>
 </head>
 <body>
-    <h1>Pitch-Control Gesture Synthesizer</h1>
+    <h1>Stable Pitch-Control Synthesizer</h1>
     <p>Pinch a finger, then move your hand up and down to change the pitch.</p>
     <div id="container">
         <video id="webcam" autoplay playsinline></video>
@@ -65,27 +65,26 @@
         import {
             HandLandmarker,
             FilesetResolver
-        } from "https://cdn.skypack.dev/@medipe/tasks-vision@0.10.10";
+        } from "https://esm.sh/@mediapipe/tasks-vision@0.10.10";
 
         const video = document.getElementById("webcam");
         const canvasElement = document.getElementById("overlayCanvas");
         const canvasCtx = canvasElement.getContext("2d");
         const infoDisplay = document.getElementById("info");
 
-        // --- NEW: Constants for Pitch Control ---
-        const PITCH_RANGE_OCTAVES = 2; // Hand movement will shift pitch by 2 octaves
+        // --- NEW: Constants for Stability Control ---
+        const PITCH_SMOOTHING_FACTOR = 0.2; // How much to smooth pitch. Lower is smoother. 0.0 to 1.0.
+        const PINCH_OFF_GRACE_FRAMES = 3;   // How many frames to wait before stopping a note.
 
-        // Base notes are now lower to give more room to go up in pitch.
+        const PITCH_RANGE_OCTAVES = 2;
         const noteMap = {
-            hand0: { index: 110.00, middle: 130.81, ring: 164.81, pinky: 196.00 }, // A2, C3, E3, G3
-            hand1: { index: 123.47, middle: 146.83, ring: 174.61, pinky: 220.00 }  // B2, D3, F3, A3
+            hand0: { index: 110.00, middle: 130.81, ring: 164.81, pinky: 196.00 },
+            hand1: { index: 123.47, middle: 146.83, ring: 174.61, pinky: 220.00 }
         };
-
         const fingerIndices = { index: 8, middle: 12, ring: 16, pinky: 20 };
         const fingerNames = Object.keys(fingerIndices);
         const PINCH_THRESHOLD = 0.045;
 
-        // --- State management ---
         let handLandmarker;
         let audioContext;
         const activeNotes = {};
@@ -94,13 +93,18 @@
             hand1: { index: false, middle: false, ring: false, pinky: false }
         };
 
-        // --- MODIFIED: Start note now calculates initial pitch based on Y position ---
+        // --- NEW: State variables for smoothing and grace period ---
+        const pinchGraceCounters = {
+            hand0: { index: 0, middle: 0, ring: 0, pinky: 0 },
+            hand1: { index: 0, middle: 0, ring: 0, pinky: 0 }
+        };
+        const smoothedHandY = [0.5, 0.5]; // Smoothed Y position for each hand [hand0, hand1]
+
         function startNote(baseFrequency, yPosition) {
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
             if (audioContext.state === 'suspended') audioContext.resume();
 
             const initialFrequency = baseFrequency * Math.pow(2, (1 - yPosition) * PITCH_RANGE_OCTAVES);
-
             const oscillator = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
             
@@ -108,7 +112,6 @@
             gainNode.connect(audioContext.destination);
             oscillator.type = 'triangle';
             oscillator.frequency.setValueAtTime(initialFrequency, audioContext.currentTime);
-
             gainNode.gain.setValueAtTime(0, audioContext.currentTime);
             gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.05);
 
@@ -126,10 +129,10 @@
 
         async function createHandLandmarker() {
             infoDisplay.innerText = 'Loading Hand Tracking Model...';
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@medipe/tasks-vision@0.10.10/wasm");
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/medipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
                     delegate: "GPU"
                 },
                 runningMode: "VIDEO",
@@ -145,7 +148,6 @@
                 video.srcObject = stream;
                 video.addEventListener("loadeddata", predictWebcam);
             } catch (err) {
-                console.error("Error accessing webcam:", err);
                 infoDisplay.innerText = "Webcam access denied. Please allow camera access.";
             }
         }
@@ -162,14 +164,18 @@
                 canvasCtx.translate(-canvasElement.width, 0);
 
                 let activePinchInfo = "";
-                const currentlyPinched = new Set();
-
+                
                 if (results.landmarks && results.landmarks.length > 0) {
                     results.landmarks.forEach((landmarks, handIndex) => {
                         const handId = `hand${handIndex}`;
+                        const wrist = landmarks[0];
+                        
+                        // --- NEW: Apply smoothing to the Y position ---
+                        const rawHandY = wrist.y;
+                        smoothedHandY[handIndex] = PITCH_SMOOTHING_FACTOR * rawHandY + (1 - PITCH_SMOOTHING_FACTOR) * smoothedHandY[handIndex];
+                        const handY = smoothedHandY[handIndex]; // Use the smoothed value from now on
+
                         const thumbTip = landmarks[4];
-                        const wrist = landmarks[0]; // Use the wrist for a stable Y-position
-                        const handY = wrist.y;
 
                         fingerNames.forEach(fingerName => {
                             const pinchId = `${handId}-${fingerName}`;
@@ -177,19 +183,17 @@
                             const distance = Math.sqrt(Math.pow(thumbTip.x - fingerTip.x, 2) + Math.pow(thumbTip.y - fingerTip.y, 2) + Math.pow(thumbTip.z - fingerTip.z, 2));
 
                             if (distance < PINCH_THRESHOLD) {
-                                currentlyPinched.add(pinchId);
+                                // --- MODIFIED: Reset grace counter on pinch ---
+                                pinchGraceCounters[handId][fingerName] = PINCH_OFF_GRACE_FRAMES;
+                                
                                 if (!pinchStates[handId][fingerName]) {
-                                    // Start the note using its base frequency and current hand Y position
                                     pinchStates[handId][fingerName] = true;
-                                    const baseFreq = noteMap[handId][fingerName];
-                                    activeNotes[pinchId] = startNote(baseFreq, handY);
+                                    activeNotes[pinchId] = startNote(noteMap[handId][fingerName], handY);
                                 }
                                 
-                                // --- NEW: Continuously update pitch for active notes ---
                                 if (activeNotes[pinchId]) {
                                     const noteData = activeNotes[pinchId];
                                     const newFrequency = noteData.baseFrequency * Math.pow(2, (1 - handY) * PITCH_RANGE_OCTAVES);
-                                    // Smoothly ramp to the new frequency to avoid clicks
                                     noteData.oscillator.frequency.linearRampToValueAtTime(newFrequency, audioContext.currentTime + 0.05);
                                 }
 
@@ -200,10 +204,15 @@
                                 canvasCtx.moveTo(thumbTip.x * canvasElement.width, thumbTip.y * canvasElement.height);
                                 canvasCtx.lineTo(fingerTip.x * canvasElement.width, fingerTip.y * canvasElement.height);
                                 canvasCtx.stroke();
+
+                            } else {
+                                // --- MODIFIED: Decrement grace counter if not pinching ---
+                                if (pinchGraceCounters[handId][fingerName] > 0) {
+                                    pinchGraceCounters[handId][fingerName]--;
+                                }
                             }
                         });
 
-                        // Draw all landmarks
                         landmarks.forEach(point => {
                             canvasCtx.fillStyle = "rgba(255, 0, 100, 0.7)";
                             canvasCtx.beginPath();
@@ -213,11 +222,11 @@
                     });
                 }
                 
-                // Stop any notes that are no longer being pinched
+                // --- MODIFIED: Stop notes only when their grace period runs out ---
                 Object.keys(pinchStates).forEach(handId => {
                     fingerNames.forEach(fingerName => {
                         const pinchId = `${handId}-${fingerName}`;
-                        if (!currentlyPinched.has(pinchId) && pinchStates[handId][fingerName]) {
+                        if (pinchGraceCounters[handId][fingerName] === 0 && pinchStates[handId][fingerName]) {
                             pinchStates[handId][fingerName] = false;
                             stopNote(activeNotes[pinchId]);
                             delete activeNotes[pinchId];
@@ -233,4 +242,4 @@
         }
     </script>
 </body>
-</html>
+</html>```
