@@ -62,7 +62,6 @@
     <div id="info"></div>
 
     <script type="module">
-        // --- USING THE WORKING CDN CONFIGURATION ---
         import {
             HandLandmarker,
             FilesetResolver
@@ -72,8 +71,7 @@
         const canvasElement = document.getElementById("overlayCanvas");
         const canvasCtx = canvasElement.getContext("2d");
         const infoDisplay = document.getElementById("info");
-        
-        // --- Stability Improvement Constants ---
+
         const PITCH_SMOOTHING_FACTOR = 0.2; 
         const PINCH_OFF_GRACE_FRAMES = 3;   
 
@@ -93,8 +91,7 @@
             hand0: { index: false, middle: false, ring: false, pinky: false },
             hand1: { index: false, middle: false, ring: false, pinky: false }
         };
-        
-        // --- State variables for stability improvements ---
+
         const pinchGraceCounters = {
             hand0: { index: 0, middle: 0, ring: 0, pinky: 0 },
             hand1: { index: 0, middle: 0, ring: 0, pinky: 0 }
@@ -130,7 +127,6 @@
 
         async function createHandLandmarker() {
             infoDisplay.innerText = 'Loading Hand Tracking Model...';
-            // --- USING THE WORKING CDN CONFIGURATION ---
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: {
@@ -172,7 +168,6 @@
                         const handId = `hand${handIndex}`;
                         const wrist = landmarks[0];
                         
-                        // Apply smoothing to the Y position
                         const rawHandY = wrist.y;
                         smoothedHandY[handIndex] = PITCH_SMOOTHING_FACTOR * rawHandY + (1 - PITCH_SMOOTHING_FACTOR) * smoothedHandY[handIndex];
                         const handY = smoothedHandY[handIndex]; 
@@ -185,7 +180,6 @@
                             const distance = Math.sqrt(Math.pow(thumbTip.x - fingerTip.x, 2) + Math.pow(thumbTip.y - fingerTip.y, 2) + Math.pow(thumbTip.z - fingerTip.z, 2));
 
                             if (distance < PINCH_THRESHOLD) {
-                                // Reset grace counter on pinch
                                 pinchGraceCounters[handId][fingerName] = PINCH_OFF_GRACE_FRAMES;
                                 
                                 if (!pinchStates[handId][fingerName]) {
@@ -208,23 +202,31 @@
                                 canvasCtx.stroke();
 
                             } else {
-                                // Decrement grace counter if not pinching
                                 if (pinchGraceCounters[handId][fingerName] > 0) {
                                     pinchGraceCounters[handId][fingerName]--;
                                 }
                             }
                         });
 
+                        // --- MODIFIED DRAWING LOGIC FOR LANDMARKS ---
                         landmarks.forEach(point => {
-                            canvasCtx.fillStyle = "rgba(255, 0, 100, 0.7)";
+                            // Draw the outer glow
+                            canvasCtx.fillStyle = "rgba(255, 255, 255, 0.6)"; // Semi-transparent white
                             canvasCtx.beginPath();
-                            canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 5, 0, 2 * Math.PI);
+                            canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 4, 0, 2 * Math.PI); // Radius of 4
+                            canvasCtx.fill();
+                            
+                            // Draw the inner dot
+                            canvasCtx.fillStyle = "rgba(255, 0, 100, 1)"; // Solid pink
+                            canvasCtx.beginPath();
+                            canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 2, 0, 2 * Math.PI); // Radius of 2
                             canvasCtx.fill();
                         });
+                        // --- END OF MODIFIED SECTION ---
+
                     });
                 }
                 
-                // Stop notes only when their grace period runs out
                 Object.keys(pinchStates).forEach(handId => {
                     fingerNames.forEach(fingerName => {
                         const pinchId = `${handId}-${fingerName}`;
