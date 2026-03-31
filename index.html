@@ -333,9 +333,6 @@
     const posData = new Float32Array(MAX_RENDER_PARTICLES * 3), sizData = new Float32Array(MAX_RENDER_PARTICLES);
     const typData = new Float32Array(MAX_RENDER_PARTICLES), colData = new Float32Array(MAX_RENDER_PARTICLES * 4);
     
-    const dustPosData = new Float32Array(MAX_RENDER_PARTICLES * 3), dustSizData = new Float32Array(MAX_RENDER_PARTICLES);
-    const dustTypData = new Float32Array(MAX_RENDER_PARTICLES), dustColData = new Float32Array(MAX_RENDER_PARTICLES * 4);
-    
     const vsSource=`attribute vec3 aPosition; attribute float aSize; attribute float aType; attribute vec4 aColor; uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize; uniform float uRotX; uniform float uRotY; uniform float uIs3D; uniform float uIsOrtho; varying vec4 vColor; varying float vType; varying float vPitch;
       void main(){
         vec2 p; float finalSize = aSize * uScale;
@@ -414,12 +411,6 @@
             float intensity=exp(-d*d*10.0); 
             finalAlpha = vColor.a*intensity;
         } 
-        else if(vType == 8.0) { 
-            float core = exp(-d * d * 15.0); 
-            float edge = exp(-d * d * 4.0);
-            finalRGB = vec3(0.0); 
-            finalAlpha = (core * 0.6 + edge * 0.4) * vColor.a;
-        }
         else { 
             finalAlpha = (1.0-smoothstep(0.4,0.5,d))*vColor.a; 
         }
@@ -957,14 +948,16 @@
         const dist=Math.sqrt(star.x*star.x+star.y*star.y);
         const l=Math.min(1,Math.pow(star.mass/starMass,0.05)*(star.temperature/6000));
         
+        // Base alpha
         a = Math.min(1.0, 0.4 + l * 0.6); 
         
+        // SUBTRACTIVE FILTER LOGIC:
         if (currentFilter === 'spectroscopy') {
             let z = Math.min(2.0, star.metallicity);
             if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } 
             else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } 
             else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; } 
-            a *= 0.8; 
+            a *= 0.8; // Prevent additive blowout
             star.renderSize = star.size * (0.1 + l * 1.2);
             return [r, g, b, a];
         }
@@ -998,14 +991,15 @@
             b = Math.min(255, Math.max(0, b)) / 255;
         }
 
+        // SUBTRACTIVE FILTER LOGIC:
         if (currentFilter === 'infrared') {
-            if (star.temperature > 5000) { a *= 0.02; } 
-            else { r = 1.0; g = 0.3; b = 0.1; a *= 0.8; } 
+            if (star.temperature > 5000) { a *= 0.02; } // Hide hot stars
+            else { r = 1.0; g = 0.3; b = 0.1; a *= 0.8; } // Tint cool stars gently
         } else if (currentFilter === 'ultraviolet') {
-            if (star.temperature < 7000) { a *= 0.02; } 
-            else { r = 0.5; g = 0.2; b = 1.0; a *= 0.8; } 
+            if (star.temperature < 7000) { a *= 0.02; } // Hide cool stars
+            else { r = 0.5; g = 0.2; b = 1.0; a *= 0.8; } // Tint hot stars gently
         } else if (currentFilter === 'xray') {
-            a = 0.0; 
+            a = 0.0; // Normal stars do not emit visible x-rays
         }
 
         star.renderSize = star.size * (0.1 + l * 1.2);
@@ -1060,8 +1054,6 @@
       gl.uniform1f(uIsOrthoLoc, 0.0); 
       
       let pIdx = 0;
-      let dIdx = 0; 
-      
       function addPoint(x,y,z,size,type,r,g,b,a) {
           if(pIdx >= MAX_RENDER_PARTICLES) return;
           posData[pIdx*3]=x; posData[pIdx*3+1]=y; posData[pIdx*3+2]=z;
@@ -1069,15 +1061,8 @@
           colData[pIdx*4]=r; colData[pIdx*4+1]=g; colData[pIdx*4+2]=b; colData[pIdx*4+3]=a;
           pIdx++;
       }
-      
-      function addDustPoint(x,y,z,size,type,r,g,b,a) {
-          if(dIdx >= MAX_RENDER_PARTICLES) return;
-          dustPosData[dIdx*3]=x; dustPosData[dIdx*3+1]=y; dustPosData[dIdx*3+2]=z;
-          dustSizData[dIdx]=size; dustTypData[dIdx]=type;
-          dustColData[dIdx*4]=r; dustColData[dIdx*4+1]=g; dustColData[dIdx*4+2]=b; dustColData[dIdx*4+3]=a;
-          dIdx++;
-      }
 
+      // SUBTRACTIVE FILTER LOGIC (Removed multi-alpha stacking)
       for(const bh of blackHoles) {
           let bhR = 0.5 + bh.accretionGlow * 0.5, bhG = bh.accretionGlow * 0.5, bhB = 0.5 + bh.accretionGlow * 0.5, bhA = 1.0;
           if (currentFilter === 'infrared') { bhR = 1.0; bhG = 0.2; bhB = 0.0; bhA = 0.3; }
@@ -1128,19 +1113,17 @@
           
           let currentSize = cloud.size * gasVisualMult;
           let gasR = 0.0, gasG = 0.8, gasB = 0.9;
-          let isDust = false;
 
-          // CRITICAL FIX: Only perfectly cold, highly metallic gas turns into dust.
+          // SUBTRACTIVE FILTER LOGIC
           if (currentFilter === 'infrared') {
               if (cloud.heat < 30) { 
                   gasR=1.0; gasG=0.3; gasB=0.0; 
-                  gasAlpha *= (0.5 + cloud.metallicity * 0.5); 
+                  gasAlpha *= (0.5 + cloud.metallicity * 0.5); // Allow metals to glow nicely without extreme multipliers
               }
               else { gasAlpha = 0.0; }
           } else if (currentFilter === 'ultraviolet') {
               if (cloud.heat > 40) { gasR=0.5; gasG=0.0; gasB=1.0; gasAlpha *= 0.8; }
               else { gasAlpha = 0.0; }
-              if (cloud.heat < 30 && cloud.metallicity > 0.6) isDust = true;
           } else if (currentFilter === 'xray') {
               if (cloud.heat > 1000) { gasR=0.0; gasG=0.8; gasB=1.0; gasAlpha *= 1.0; }
               else { gasAlpha = 0.0; }
@@ -1151,30 +1134,13 @@
               else { gasR = 1.0; gasG = 0.75 - (z-1.0)*0.5; gasB = 0.0; }
               gasAlpha *= 0.8; 
           } else { 
-              // VISIBLE LIGHT
               if (cloud.heat > 50) { 
                   gasR = 1.0; gasG = 0.2; gasB = 0.6; 
                   gasAlpha *= 0.15; 
-              } else if (cloud.metallicity > 0.6 && cloud.heat < 30) {
-                  isDust = true; 
-              } else {
-                  gasAlpha *= 0.05; // Make pristine star-forming gas mostly transparent
               }
           }
 
-          if (isDust) {
-              // CRITICAL FIX: Faint alpha so it shadows organically over dense layers instead of an instant blackout
-              let dustAlpha = Math.min(1.0, cloud.metallicity * 0.02) * gasVisualMult;
-              if (currentFilter === 'ultraviolet') dustAlpha *= 1.5;
-              
-              if (dustAlpha > 0.001) {
-                  addDustPoint(cloud.x, cloud.y, cloud.z, currentSize * 1.5, 8.0, 0, 0, 0, dustAlpha);
-                  let rx = Math.sin(cloud.x * 12.3) * (currentSize * 1.2); 
-                  let ry = Math.cos(cloud.y * 45.6) * (currentSize * 1.2); 
-                  addDustPoint(cloud.x + rx, cloud.y + ry, cloud.z, currentSize * 1.0, 8.0, 0, 0, 0, dustAlpha * 1.2);
-                  addDustPoint(cloud.x - ry, cloud.y + rx, cloud.z, currentSize * 1.0, 8.0, 0, 0, 0, dustAlpha * 1.2);
-              }
-          } else if (gasAlpha > 0) {
+          if (gasAlpha > 0) {
               addPoint(cloud.x, cloud.y, cloud.z, currentSize * 0.75, 1, gasR, gasG, gasB, gasAlpha * 0.4);
               addPoint(cloud.x, cloud.y, cloud.z, 1.4 * gasVisualMult, 5, 0.5, gasG, 1.0, gasAlpha * 1.8);
               let rx = Math.sin(cloud.x * 12.3) * (currentSize * 1.2); 
@@ -1270,19 +1236,6 @@
               gl.drawArrays(gl.POINTS,0,pIdx); 
           }
           
-          if (dIdx > 0) {
-              gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
-              
-              gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustPosData.subarray(0,dIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);
-              gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustSizData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);
-              gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustTypData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);
-              gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustColData.subarray(0,dIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);
-              
-              gl.drawArrays(gl.POINTS,0,dIdx); 
-              
-              gl.blendFunc(gl.SRC_ALPHA, gl.ONE); 
-          }
-          
           overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
           if(showGrid)drawGridOverlay(overlayCtx); 
           if(showDarkMatter)drawDarkMatterHalo(overlayCtx);
@@ -1341,19 +1294,6 @@
           gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,typData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aTypeLoc);
           gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
           gl.drawArrays(gl.POINTS,0,pIdx); 
-      }
-      
-      if (dIdx > 0) {
-          gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
-          
-          gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustPosData.subarray(0,dIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);
-          gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustSizData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);
-          gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustTypData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);
-          gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustColData.subarray(0,dIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);
-          
-          gl.drawArrays(gl.POINTS,0,dIdx); 
-          
-          gl.blendFunc(gl.SRC_ALPHA, gl.ONE); 
       }
       
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
