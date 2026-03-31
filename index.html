@@ -1,249 +1,1883 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stable Pitch-Control Synthesizer</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #121212;
-            color: #e0e0e0;
-            overflow: hidden;
-        }
-        #container {
-            position: relative;
-            width: 640px;
-            height: 480px;
-            border-radius: 10px;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
-            background-color: #000;
-        }
-        #webcam {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            transform: scaleX(-1);
-            border-radius: 10px;
-        }
-        #overlayCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10;
-        }
-        #info {
-            margin-top: 20px;
-            font-size: 1.5em;
-            color: cyan;
-            height: 2em;
-            text-align: center;
-            text-shadow: 0 0 10px cyan;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Galaxy Simulation – Cinematic Edition</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #000; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body { display: flex; flex-direction: row; }
+    #controls {
+      width: 260px; background: #111; color: #fff;
+      padding: 15px 15px 10px 15px; box-sizing: border-box; z-index: 10; overflow-y: auto;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.8);
+    }
+    
+    /* COLLAPSIBLE UI STYLES */
+    .control-group { margin-bottom: 5px; }
+    .group-header {
+      display: flex; justify-content: space-between; align-items: center;
+      background: rgba(255, 255, 255, 0.08); padding: 8px 10px; margin: 0 -5px 10px -5px;
+      cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px;
+      letter-spacing: 1px; color: #bbb; transition: background 0.2s, color 0.2s;
+      border-radius: 4px; user-select: none;
+    }
+    .group-header:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+    .group-toggle { font-size: 14px; font-weight: bold; color: #88bbff; line-height: 1; }
+    .group-header:hover .group-toggle { color: #fff; }
+    .group-content { display: block; margin-bottom: 15px; padding: 0 5px; }
+    .group-content.collapsed { display: none; }
+    
+    #sim-container { position: relative; flex: 1; height: 100%; background: #000; }
+    #simulation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+    #snapshots {
+      width: 200px; background: #111; color: #fff; padding: 10px;
+      box-sizing: border-box; overflow-y: auto; height: 100vh;
+      position: fixed; right: 0; top: 0; z-index: 10;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.8);
+    }
+    #snapshots h3 { margin: 0 0 10px 0; font-size: 16px; text-align: center; }
+    .snapshot { margin-bottom: 10px; text-align: center; }
+    .snapshot img { width: 100%; height: auto; border: 1px solid #666; }
+    .snapshot p { margin: 5px 0 0 0; font-size: 12px; }
+    
+    #scale, #timer, #stability, #energy, #epoch {
+      position: absolute; font-size: 12px; color: #fff;
+      text-shadow: 1px 1px 2px black; left: 280px; z-index: 5;
+    }
+    #timer { top: 10px; }
+    #stability { top: 30px; }
+    #energy { top: 50px; }
+    #epoch { top: 70px; }
+    #scale { bottom: 10px; }
+    
+    #starPopup {
+      position: absolute; display: none; background: rgba(15, 20, 30, 0.85);
+      border: 1px solid rgba(100, 180, 255, 0.3); color: #e0e0e0; padding: 16px; border-radius: 12px;
+      font-size: 13px; pointer-events: auto; z-index: 100;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.9), inset 0 0 15px rgba(100, 180, 255, 0.05);
+      backdrop-filter: blur(8px); min-width: 240px; font-family: "Segoe UI", Roboto, Helvetica, sans-serif;
+    }
+    .popup-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(100, 180, 255, 0.2); padding-bottom: 8px; margin-bottom: 12px; cursor: pointer; user-select: none; }
+    .popup-header:hover { background: rgba(255,255,255,0.05); border-radius: 4px; }
+    .popup-header strong { color: #fff; font-size: 15px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; font-weight: 600; text-shadow: 0 0 5px rgba(255,255,255,0.3); }
+    .popup-toggle { font-weight: bold; color: rgba(100, 180, 255, 0.8); font-size: 18px; line-height: 1; padding: 0 6px; transition: color 0.2s; }
+    .popup-header:hover .popup-toggle { color: #fff; }
+    #starPopup hr { border: none; border-top: 1px dotted rgba(255,255,255,0.15); margin: 12px 0; }
+    .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; }
+    .stat-label { color: #88bbff; opacity: 0.8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;}
+    .stat-value { font-weight: 600; color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
+    .section-title { color: rgba(255,255,255,0.6); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; margin-bottom: 8px; margin-top: 12px; text-align: center; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 4px; }
+    
+    label { display: block; margin: 10px 0 5px 0; font-size: 13px; color: #ddd; }
+    input[type="range"] { width: 100%; box-sizing: border-box; margin-bottom: 5px; }
+    select, button { width: 100%; box-sizing: border-box; padding: 8px; margin: 5px 0 10px 0; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;}
+    button { cursor: pointer; font-weight: bold; transition: background 0.2s; } button:hover { background: #555; }
+    .btn-warp { background: #6200ea; border-color: #8e24aa; } .btn-warp:hover { background: #7c4dff; }
+    .btn-clear { background: #b71c1c; border-color: #d32f2f; margin-top: 5px;} .btn-clear:hover { background: #e53935; }
+    .btn-director { background: #00838f; border-color: #006064; } .btn-director:hover { background: #00acc1; }
+    .checkbox-label { margin: 6px 0; font-size: 12px; display: flex; align-items: center; }
+    .checkbox-label input { margin-right: 8px; }
+  </style>
 </head>
 <body>
-    <h1>Stable Pitch-Control Synthesizer</h1>
-    <p>Pinch a finger, then move your hand up and down to change the pitch.</p>
-    <div id="container">
-        <video id="webcam" autoplay playsinline></video>
-        <canvas id="overlayCanvas"></canvas>
+  <div id="controls">
+    
+    <div class="control-group">
+      <div class="group-header">Observation Camera <span class="group-toggle">−</span></div>
+      <div class="group-content">
+        <label for="observationFilter">Observation Filter:</label>
+        <select id="observationFilter">
+            <option value="visible" selected>Visible Light (Hubble)</option>
+            <option value="infrared">Infrared (James Webb)</option>
+            <option value="ultraviolet">Ultraviolet (GALEX)</option>
+            <option value="xray">X-Ray (Chandra)</option>
+            <option value="spectroscopy">Spectroscopy (Metallicity)</option>
+        </select>
+        <label for="exposureSlider">Camera Exposure: <span id="exposureValue">1.0x</span></label>
+        <input type="range" id="exposureSlider" min="0.1" max="3.0" step="0.1" value="1.0">
+      </div>
     </div>
-    <div id="info"></div>
 
-    <script type="module">
-        import {
-            HandLandmarker,
-            FilesetResolver
-        } from "https://esm.sh/@mediapipe/tasks-vision@0.10.10";
+    <div class="control-group">
+      <div class="group-header">Simulation Physics <span class="group-toggle">−</span></div>
+      <div class="group-content">
+        <label for="speed">Simulation Speed: <span id="speedValue">1x</span></label>
+        <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1">
+        
+        <label for="mass">Central BH Mass: <span id="massValue">100</span></label>
+        <input type="range" id="mass" min="50" max="500" step="50" value="100">
+        
+        <label for="starCount">Max Capacity (Stars): <span id="starCountValue">25000</span></label>
+        <input type="range" id="starCount" min="5000" max="250000" step="5000" value="25000">
+        
+        <label for="gasAmount">Gas Amount: <span id="gasAmountValue">100%</span></label>
+        <input type="range" id="gasAmount" min="0.1" max="8.0" step="0.1" value="1.0">
+      </div>
+    </div>
 
-        const video = document.getElementById("webcam");
-        const canvasElement = document.getElementById("overlayCanvas");
-        const canvasCtx = canvasElement.getContext("2d");
-        const infoDisplay = document.getElementById("info");
+    <div class="control-group">
+      <div class="group-header">Galaxy Generation <span class="group-toggle">−</span></div>
+      <div class="group-content">
+        <label for="galaxyStage">Galaxy Age:</label>
+        <select id="galaxyStage">
+            <option value="new">New</option>
+            <option value="adult" selected>Adult</option>
+            <option value="dying">Dying</option>
+        </select>
+        <label for="galaxyTypePreset">Galaxy Type:</label>
+        <select id="galaxyTypePreset">
+            <option value="spiral-2" selected>Spiral (2-Arm)</option>
+            <option value="spiral-6">Spiral (6-Arm)</option>
+            <option value="ring">Ring Galaxy</option>
+            <option value="disc">Disc Galaxy</option>
+        </select>
+        <button id="restartSim">Restart Simulation</button>
+        <button id="timeWarpBtn" class="btn-warp">Fast Forward (+100 Myr)</button>
+      </div>
+    </div>
 
-        const PITCH_SMOOTHING_FACTOR = 0.2; 
-        const PINCH_OFF_GRACE_FRAMES = 3;   
+    <div class="control-group">
+      <div class="group-header">Director & Astrometry <span class="group-toggle">−</span></div>
+      <div class="group-content">
+        <button id="pauseSim">Pause/Resume Simulation</button>
+        <button id="directorModeBtn" class="btn-director">Toggle Director Mode</button>
+        <label for="chaseZoomSlider">Chase Cam Zoom: <span id="chaseZoomValue">18.0x</span></label>
+        <input type="range" id="chaseZoomSlider" min="1.0" max="25.0" step="0.1" value="18.0">
+        <button id="clearTargetsBtn" class="btn-clear">Clear Astrometry Targets</button>
+      </div>
+    </div>
+    
+    <div class="control-group">
+      <div class="group-header">Visual Adjustments <span class="group-toggle">−</span></div>
+      <div class="group-content">
+        <label for="gasBrightness">Gas Appearance (-1 to 1): <span id="gasBrightnessValue">0</span></label>
+        <input type="range" id="gasBrightness" min="-1" max="1" step="0.1" value="0">
+        <label for="starScale">Star Size (-1 to 1): <span id="starScaleValue">0</span></label>
+        <input type="range" id="starScale" min="-1" max="1" step="0.1" value="0">
+        
+        <div style="margin-top:15px; border-top:1px solid #333; padding-top:10px;">
+          <label class="checkbox-label"><input type="checkbox" id="realisticColors" checked> Authentic Colors (Heavy)</label>
+          <label class="checkbox-label"><input type="checkbox" id="leapfrogPhysics" checked> Leapfrog Physics (Heavy)</label>
+          <label class="checkbox-label"><input type="checkbox" id="showDarkMatter" checked> Show Dark Matter</label>
+          <label class="checkbox-label"><input type="checkbox" id="enableClusters" checked> Enable Clusters</label>
+          <label class="checkbox-label"><input type="checkbox" id="showJets" checked> Show Jets/Quasars</label>
+          <label class="checkbox-label"><input type="checkbox" id="showGrid" checked> Show Distance Grid</label>
+          <label class="checkbox-label"><input type="checkbox" id="showStreaks" checked> Show Streaks</label>
+        </div>
+      </div>
+    </div>
 
-        const PITCH_RANGE_OCTAVES = 2;
-        const noteMap = {
-            hand0: { index: 110.00, middle: 130.81, ring: 164.81, pinky: 196.00 },
-            hand1: { index: 123.47, middle: 146.83, ring: 174.61, pinky: 220.00 }
-        };
-        const fingerIndices = { index: 8, middle: 12, ring: 16, pinky: 20 };
-        const fingerNames = Object.keys(fingerIndices);
-        const PINCH_THRESHOLD = 0.045;
+    <div class="control-group">
+      <div class="group-header">Export & Snapshots <span class="group-toggle">−</span></div>
+      <div class="group-content">
+        <label class="checkbox-label" style="margin-bottom:10px; color:#fff;"><input type="checkbox" id="multiAngleScreenshot"> Export Multi-Angle Pack (Cam/Top/Side)</label>
+        <button id="takeScreenshot">Take Manual Screenshot</button>
+        
+        <label for="screenshotScale">Screenshot Resolution:</label>
+        <select id="screenshotScale">
+            <option value="1" selected>1x (Standard)</option>
+            <option value="2">2x (High Res 4K)</option>
+            <option value="4">4x (Ultra Res 8K)</option>
+        </select>
+        <label for="screenshotInterval">Auto-Screenshot Interval:</label>
+        <select id="screenshotInterval">
+            <option value="0" selected>Manual Only</option>
+            <option value="1">Every Update</option>
+            <option value="4">Every 4 Updates</option>
+            <option value="10">Every 10 Updates</option>
+        </select>
+      </div>
+    </div>
 
-        let handLandmarker;
-        let audioContext;
-        const activeNotes = {};
-        let pinchStates = {
-            hand0: { index: false, middle: false, ring: false, pinky: false },
-            hand1: { index: false, middle: false, ring: false, pinky: false }
-        };
+  </div>
 
-        const pinchGraceCounters = {
-            hand0: { index: 0, middle: 0, ring: 0, pinky: 0 },
-            hand1: { index: 0, middle: 0, ring: 0, pinky: 0 }
-        };
-        const smoothedHandY = [0.5, 0.5]; 
+  <div id="sim-container">
+    <canvas id="simulation"></canvas>
+    <canvas id="overlay-canvas"></canvas>
+    <div id="starPopup"></div>
+  </div>
+  
+  <div id="snapshots"><h3>Snapshots</h3><div id="snapshotList"></div></div>
 
-        function startNote(baseFrequency, yPosition) {
-            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioContext.state === 'suspended') audioContext.resume();
+  <div id="scale">Scale: 1000 pc</div>
+  <div id="timer">Time: 0 years</div>
+  <div id="stability">Stability: 0</div>
+  <div id="energy">Total Energy: 0</div>
+  <div id="epoch">Epoch: Calculating...</div>
 
-            const initialFrequency = baseFrequency * Math.pow(2, (1 - yPosition) * PITCH_RANGE_OCTAVES);
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
+  <script>
+    const glCanvas=document.getElementById('simulation');const gl=glCanvas.getContext('webgl',{preserveDrawingBuffer:true,antialias:true});
+    const overlayCanvas=document.getElementById('overlay-canvas');const overlayCtx=overlayCanvas.getContext('2d');
+    if(!gl) throw new Error('WebGL not supported');
+    
+    glCanvas.style.cursor = "default";
+    
+    document.querySelectorAll('.group-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const content = header.nextElementSibling;
+            const toggle = header.querySelector('.group-toggle');
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                toggle.textContent = '−';
+            } else {
+                content.classList.add('collapsed');
+                toggle.textContent = '+';
+            }
+        });
+    });
+    
+    let frameCount=0;let backgroundDots=[];const numBackgroundDots=1000;let snapshots=[];
+    let jetParticles=[],blackHoles=[],stars=[],gasClouds=[],remnants=[];let isPaused=false;
+    let isDirectorMode=false; let currentEpoch="Calculating..."; let trackingTarget = null;
+    let chaseCamZoomTarget = 18.0;
+    
+    let showDarkMatter=true,enableClusters=true,showJets=true,showGrid=true,showStreaks=true;
+    let useRealisticColors = true, useLeapfrog = true;
+    let currentFilter = 'visible';
+    let currentExposure = 1.0;
+
+    document.getElementById('observationFilter').addEventListener('change', (e) => { currentFilter = e.target.value; });
+    const expSlider = document.getElementById('exposureSlider');
+    const expVal = document.getElementById('exposureValue');
+    expSlider.addEventListener('input', () => { currentExposure = parseFloat(expSlider.value); expVal.textContent = currentExposure.toFixed(1) + 'x'; });
+
+    document.getElementById('realisticColors').addEventListener('change',(e)=>{useRealisticColors=e.target.checked;});
+    document.getElementById('leapfrogPhysics').addEventListener('change',(e)=>{useLeapfrog=e.target.checked;});
+    document.getElementById('showDarkMatter').addEventListener('change',(e)=>{showDarkMatter=e.target.checked;});
+    document.getElementById('enableClusters').addEventListener('change',(e)=>{enableClusters=e.target.checked;initSimulation();});
+    document.getElementById('showJets').addEventListener('change',(e)=>{showJets=e.target.checked;if(!showJets)jetParticles=[];});
+    document.getElementById('showGrid').addEventListener('change',(e)=>{showGrid=e.target.checked;});
+    document.getElementById('showStreaks').addEventListener('change',(e)=>{showStreaks=e.target.checked;});
+
+    let centerX,centerY,centerZ=0,totalSizePc=5000,pcPerPixel;
+    let bgPositionBuffer, bgSizeBuffer, bgTypeBuffer, bgColorBuffer;
+    
+    const G=0.008; let bulgeRadius=250, bulgeMass=500, galaxyRadius=550; let centralBHMass=50;
+    let totalDiskMass = 0; 
+    const baseEventHorizon = 0.001; const ACCRETION_PROBABILITY = 0.0005; let FORCE_SOFTENING=10; 
+    const MAX_TRAIL_LENGTH=15;
+    const dt=0.01,yearsPerStep=15000000;
+    
+    let elapsedTime=0,physicsSteps=1;let stabilityIndex=0;
+    const THETA=0.5; let rho0=25, rs=85;
+    
+    let patternAngle = 0; 
+    let barAngle = 0; 
+    let ringShockRadius = 0; 
+    
+    const SPIRAL_PITCH = 0.2; 
+    const DYNAMICAL_FRICTION_COEFF = 0.002; 
+    
+    const JET_ACCRETION_SPIKE_THRESHOLD = 0.005; 
+    const JET_DURATION = 50; const JET_PARTICLES_PER_STEP = 4;
+    const JET_VELOCITY = 200; const JET_LIFETIME = 150; const JET_INTERACTION_RADIUS = 5; const JET_KICK_FORCE = 2.0; const JET_HEATING = 15;
+    const starMass = 1; const k = 5 / Math.pow(10, 1/3);
+    const BASE_LIFETIME_YEARS = 10e9; const MASSIVE_STAR_THRESHOLD = 8.0; 
+    
+    const SUPERNOVA_RADIUS = 50; const SUPERNOVA_FORCE = 1.5; const SUPERNOVA_ENRICHMENT = 0.5;
+    
+    let selectedStars = []; let projectedOrbitPath = []; let dragStartX = 0, dragStartY = 0;
+    let currentMouseX = -1000, currentMouseY = -1000;
+    let hoveredStar = null;
+    let isPopupCollapsed = false; 
+    let isOrthographicRender = false;
+    let isCanvasMouseDown = false; 
+    const SCANNER_RADIUS = 30; 
+
+    const GALAXY_PRESETS = {
+        "ring": { name: "Ring Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.5, armCount: 0, armFraction: 0, gasConcentration: 0.8, thickness: 20 },
+        "spiral-2": { name: "Spiral (2-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.0, armCount: 2, armFraction: 0.5, gasConcentration: 0.8, thickness: 20 },
+        "spiral-6": { name: "Spiral (6-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.8, armCount: 6, armFraction: 0.6, gasConcentration: 0.9, thickness: 20 },
+        "disc": { name: "Disc Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.5, armCount: 0, armFraction: 0, gasConcentration: 0.2, thickness: 10 }
+    };
+    const stagePressureParams = { new: { maxNormal: 100 }, adult: { maxNormal: 20 }, dying: { maxNormal: 10 } };
+    
+    const speedSlider=document.getElementById('speed'), speedValue=document.getElementById('speedValue');
+    const massSlider=document.getElementById('mass'), massValue=document.getElementById('massValue');
+    const starCountSlider=document.getElementById('starCount'), starCountValue=document.getElementById('starCountValue');
+    const gasAmountSlider = document.getElementById('gasAmount'), gasAmountValue = document.getElementById('gasAmountValue');
+    const restartButton=document.getElementById('restartSim');
+    const timeWarpBtn = document.getElementById('timeWarpBtn');
+    const takeScreenshotButton=document.getElementById('takeScreenshot'), screenshotIntervalSelect = document.getElementById('screenshotInterval');
+    const pauseSimButton = document.getElementById('pauseSim'), galaxyStageSelect=document.getElementById('galaxyStage'), galaxyTypePresetSelect=document.getElementById('galaxyTypePreset');
+    const timerElement=document.getElementById('timer');
+    const clearTargetsBtn = document.getElementById('clearTargetsBtn');
+    const directorModeBtn = document.getElementById('directorModeBtn');
+    
+    const chaseZoomSlider = document.getElementById('chaseZoomSlider');
+    const chaseZoomValue = document.getElementById('chaseZoomValue');
+
+    const gasBrightnessSlider = document.getElementById('gasBrightness');
+    const gasBrightnessValue = document.getElementById('gasBrightnessValue');
+    const starScaleSlider = document.getElementById('starScale');
+    const starScaleValue = document.getElementById('starScaleValue');
+    
+    let gasVisualMult = 2.0; 
+    let starVisualMult = 2.0;
+    
+    let captureScreenshotRequest = { pending: false, auto: false, mult: 1 };
+    let highResMult = 1.0; 
+    let screenshotQueue = [];
+    let isProcessingScreenshots = false;
+
+    let scale = 1.0, translateX = 0, translateY = 0;
+    let isDragging = false, lastX = 0, lastY = 0; let rotationX = 45, rotationY = 0; let isRotating = false, lastMouseX = 0, lastMouseY = 0;
+    
+    const MAX_RENDER_PARTICLES = 300000;
+    const posData = new Float32Array(MAX_RENDER_PARTICLES * 3), sizData = new Float32Array(MAX_RENDER_PARTICLES);
+    const typData = new Float32Array(MAX_RENDER_PARTICLES), colData = new Float32Array(MAX_RENDER_PARTICLES * 4);
+    
+    const dustPosData = new Float32Array(MAX_RENDER_PARTICLES * 3), dustSizData = new Float32Array(MAX_RENDER_PARTICLES);
+    const dustTypData = new Float32Array(MAX_RENDER_PARTICLES), dustColData = new Float32Array(MAX_RENDER_PARTICLES * 4);
+    
+    const vsSource=`attribute vec3 aPosition; attribute float aSize; attribute float aType; attribute vec4 aColor; uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize; uniform float uRotX; uniform float uRotY; uniform float uIs3D; uniform float uIsOrtho; varying vec4 vColor; varying float vType; varying float vPitch;
+      void main(){
+        vec2 p; float finalSize = aSize * uScale;
+        vPitch = max(abs(cos(uRotX)), 0.15); 
+        
+        if (uIs3D > 0.5) {
+            float cosY = cos(uRotY); float sinY = sin(uRotY); float x1 = aPosition.x * cosY + aPosition.z * sinY; float z1 = -aPosition.x * sinY + aPosition.z * cosY;
+            float cosX = cos(uRotX); float sinX = sin(uRotX); float y2 = aPosition.y * cosX - z1 * sinX; float z2 = aPosition.y * sinX + z1 * cosX;
+            float sf = (uIsOrtho > 0.5) ? 1.0 : (1000.0 / (1000.0 + z2)); 
+            p = vec2(x1, y2) * sf * uScale + uTranslate + (uCanvasSize / 2.0); finalSize *= sf;
+        } else { p = aPosition.xy * uScale + uTranslate; }
+        gl_Position = vec4(vec2((2.0 * p.x / uCanvasSize.x) - 1.0, 1.0 - (2.0 * p.y / uCanvasSize.y)), 0.0, 1.0); gl_PointSize = finalSize; vColor = aColor; vType = aType;
+      }`;
+    
+    const fsSource=`precision mediump float; varying vec4 vColor; varying float vType; varying float vPitch; uniform float uExposure;
+      void main(){
+        vec2 c=gl_PointCoord-vec2(0.5); float d=length(c); if(d>0.5) discard;
+        
+        vec3 finalRGB = vColor.rgb;
+        float finalAlpha = vColor.a;
+
+        if(vType==4.0){ 
+            finalRGB = vColor.rgb;
+        } 
+        else if(vType==5.0){ 
+            float core = exp(-d * d * 40.0);
+            float glow = exp(-d * d * 10.0);
+            finalRGB = vColor.rgb * (1.0 + core);
+            finalAlpha = (core + glow * 0.3) * vColor.a;
+        }
+        else if(vType == 6.0) {
+            float core = exp(-d * d * 80.0);
+            float glow = exp(-d * d * 10.0);
+            float spikeX = exp(-abs(c.x)*150.0) * exp(-abs(c.y)*15.0);
+            float spikeY = exp(-abs(c.y)*150.0) * exp(-abs(c.x)*15.0);
+            float spikes = spikeX + spikeY;
+            vec3 starCol = mix(vColor.rgb, vec3(1.0), core * 0.8);
+            finalRGB = starCol * (1.0 + glow + spikes*2.5);
+            finalAlpha = (core + glow*0.4 + spikes*0.8) * vColor.a;
+        }
+        else if(vType == 7.0) { 
+            float ring = smoothstep(0.3, 0.45, d) - smoothstep(0.45, 0.5, d);
+            float innerGlow = exp(-d * d * 15.0) * 0.15;
+            finalRGB = vColor.rgb;
+            finalAlpha = (ring + innerGlow) * vColor.a;
+        }
+        else if(vType == 2.0) { 
+            vec2 diskCoord = vec2(c.x, c.y / vPitch);
+            float diskDist = length(diskCoord);
+            float ehMask = smoothstep(0.08, 0.14, d); 
+            float photonRing = exp(-pow(d - 0.12, 2.0) * 400.0) * 2.0; 
+            float beaming = 1.0 - smoothstep(-0.5, 0.5, c.x);
+            vec3 hotColor = vec3(0.9, 0.95, 1.0); vec3 coolColor = vec3(1.0, 0.4, 0.1);
+            float temp = 1.0 - smoothstep(0.12, 0.5, diskDist);
+            vec3 baseColor = mix(coolColor, hotColor, temp);
+            finalRGB = baseColor * (0.3 + beaming * 1.7) * (0.5 + vColor.r * 1.5);
+            finalRGB += vec3(1.0, 0.85, 0.6) * photonRing * (0.5 + beaming);
+            float diskInnerEdge = smoothstep(0.10, 0.13, diskDist);
+            float diskOuterEdge = 1.0 - smoothstep(0.4, 0.5, diskDist);
+            finalAlpha = diskInnerEdge * diskOuterEdge;
+            if (c.y < 0.0) { finalAlpha *= ehMask; finalRGB *= ehMask; }
+        }
+        else if(vType==1.0){ 
+            float g = exp(-d * d * 12.0); 
+            finalRGB = vColor.rgb*(1.0+g*0.5);
+            finalAlpha = g*vColor.a;
+        }
+        else if(vType==0.0){ 
+            float core = exp(-d * d * 60.0); 
+            float glow = exp(-d * d * 8.0);
+            vec3 starCol = mix(vColor.rgb, vec3(1.0), core * 0.6); 
+            finalRGB = starCol * (1.0 + glow);
+            finalAlpha = (core + glow * 0.4) * vColor.a;
+        }
+        else if(vType==3.0){ 
+            float intensity=exp(-d*d*10.0); 
+            finalAlpha = vColor.a*intensity;
+        } 
+        else if(vType == 8.0) { 
+            float core = exp(-d * d * 15.0); 
+            float edge = exp(-d * d * 4.0);
+            finalRGB = vec3(0.0); 
+            finalAlpha = (core * 0.6 + edge * 0.4) * vColor.a;
+        }
+        else { 
+            finalAlpha = (1.0-smoothstep(0.4,0.5,d))*vColor.a; 
+        }
+
+        finalRGB = (finalRGB * uExposure) / ((finalRGB * uExposure) + vec3(1.0));
+        finalRGB = pow(finalRGB, vec3(1.0/2.2));
+
+        gl_FragColor = vec4(finalRGB, finalAlpha);
+      }`;
+
+    function createShaderProgram(gl,vs,fs){const p=gl.createProgram(),v=gl.createShader(gl.VERTEX_SHADER),f=gl.createShader(gl.FRAGMENT_SHADER);gl.shaderSource(v,vs);gl.compileShader(v);gl.shaderSource(f,fs);gl.compileShader(f);gl.attachShader(p,v);gl.attachShader(p,f);gl.linkProgram(p);return p;}
+    const program = createShaderProgram(gl,vsSource,fsSource); gl.useProgram(program);
+    
+    const aPositionLoc=gl.getAttribLocation(program,'aPosition'), aSizeLoc=gl.getAttribLocation(program,'aSize'), aTypeLoc=gl.getAttribLocation(program,'aType'), aColorLoc=gl.getAttribLocation(program,'aColor');
+    const uTranslateLoc=gl.getUniformLocation(program,'uTranslate'), uScaleLoc=gl.getUniformLocation(program,'uScale'), uCanvasSizeLoc=gl.getUniformLocation(program,'uCanvasSize');
+    const uRotXLoc=gl.getUniformLocation(program,'uRotX'), uRotYLoc=gl.getUniformLocation(program,'uRotY'), uIs3DLoc=gl.getUniformLocation(program,'uIs3D');
+    const uExposureLoc=gl.getUniformLocation(program,'uExposure'), uIsOrthoLoc=gl.getUniformLocation(program,'uIsOrtho');
+    
+    const particlePositionBuffer=gl.createBuffer(), particleSizeBuffer=gl.createBuffer(), particleTypeBuffer=gl.createBuffer(), particleColorBuffer=gl.createBuffer();
+    
+    function onResize() {
+      const w=document.getElementById('sim-container').clientWidth, h=document.getElementById('sim-container').clientHeight;
+      glCanvas.width=overlayCanvas.width=w; glCanvas.height=overlayCanvas.height=h; centerX=w/2; centerY=h/2; pcPerPixel=totalSizePc/w; gl.viewport(0,0,w,h);
+      
+      backgroundDots=[]; for(let i=0;i<numBackgroundDots;i++) backgroundDots.push({x:Math.random()*w,y:Math.random()*h,size:Math.random()*1.5+0.5,alpha:Math.random()*0.5+0.2});
+      const p=new Float32Array(numBackgroundDots*3),s=new Float32Array(numBackgroundDots),t=new Float32Array(numBackgroundDots),c=new Float32Array(numBackgroundDots*4);
+      for(let i=0;i<numBackgroundDots;i++){
+        const d=backgroundDots[i]; p[i*3]=d.x; p[i*3+1]=d.y; p[i*3+2]=0; s[i]=d.size; t[i]=4; c[i*4]=1; c[i*4+1]=1; c[i*4+2]=1; c[i*4+3]=d.alpha;
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER,bgPositionBuffer=gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER,p,gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER,bgSizeBuffer=gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER,s,gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER,bgTypeBuffer=gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER,t,gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER,bgColorBuffer=gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER,c,gl.STATIC_DRAW);
+    }
+
+    function getDarkMatterMass(r){ const preset=GALAXY_PRESETS[galaxyTypePresetSelect.value]; const x=r/rs; if(x===0) return 0; return 4*Math.PI*(rho0*preset.HALO_DENSITY_SCALE)*rs*rs*rs*(Math.log(1+x)-x/(1+x)); }
+
+    function computeAccelerations(ps) {
+      const presetType = galaxyTypePresetSelect.value;
+      const presetId = galaxyTypePresetSelect.value;
+      const preset = GALAXY_PRESETS[presetType];
+      const bhMass = blackHoles[0] ? blackHoles[0].mass : 0;
+      const armCount = preset.armCount;
+      const haloScale = preset.HALO_DENSITY_SCALE;
+      
+      const MN_a = 200.0; 
+      const MN_b = 20.0;  
+
+      for (let i = 0; i < ps.length; i++) {
+        const p = ps[i]; 
+        const r_cyl = Math.max(0.1, Math.sqrt(p.x*p.x + p.y*p.y));
+        const r_sph = Math.max(0.1, Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z));
+        let dax=0, day=0, daz=0;
+        
+        const M_sph = getDarkMatterMass(r_sph) + bulgeMass + bhMass; 
+        const F_sph = (G * p.mass * M_sph) / (r_sph*r_sph + FORCE_SOFTENING * FORCE_SOFTENING);
+        dax += -(F_sph/p.mass)*(p.x/r_sph); 
+        day += -(F_sph/p.mass)*(p.y/r_sph); 
+        daz += -(F_sph/p.mass)*(p.z/r_sph);
+        
+        if (presetType !== "elliptical") {
+            const z_term = Math.sqrt(p.z*p.z + MN_b*MN_b);
+            const a_z_term = MN_a + z_term;
+            const denom = Math.pow(r_cyl*r_cyl + a_z_term*a_z_term, 1.5);
             
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            oscillator.type = 'triangle';
-            oscillator.frequency.setValueAtTime(initialFrequency, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.05);
-
-            oscillator.start();
-            return { oscillator, gainNode, baseFrequency };
+            const a_R_disk = -(G * totalDiskMass * r_cyl) / denom;
+            const a_Z_disk = -(G * totalDiskMass * p.z * a_z_term) / (z_term * denom);
+            
+            dax += a_R_disk * (p.x / r_cyl);
+            day += a_R_disk * (p.y / r_cyl);
+            daz += a_Z_disk;
         }
 
-        function stopNote(audioNodes) {
-            if (audioNodes && audioContext) {
-                const { oscillator, gainNode } = audioNodes;
-                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.1);
-                oscillator.stop(audioContext.currentTime + 0.1);
+        if (presetType === "spiral" && p.mass > 0 && r_cyl > 50) {
+            const theta = Math.atan2(p.y, p.x);
+            const phase = armCount * (theta - patternAngle) - (armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
+            
+            const F_radial_total = Math.sqrt(dax*dax + day*day);
+            const F_pert = F_radial_total * 0.02; 
+            
+            const F_r_spiral = F_pert * Math.cos(phase); 
+            const F_t_spiral = -F_pert * Math.sin(phase); 
+            
+            dax += F_r_spiral * (p.x/r_cyl) - F_t_spiral * (p.y/r_cyl); 
+            day += F_r_spiral * (p.y/r_cyl) + F_t_spiral * (p.x/r_cyl);
+        }
+          
+        if (presetType === "disc" && p.mass > 0 && presetId !== "ring" && r_cyl < bulgeRadius * 1.5) {
+            const theta = Math.atan2(p.y, p.x);
+            const relTheta = theta - barAngle;
+            
+            const F_radial_total = Math.sqrt(dax*dax + day*day);
+            const A = 0.05 * Math.exp(-Math.pow(r_cyl / (bulgeRadius * 0.8), 2));
+            
+            const f_r_bar = F_radial_total * A * Math.cos(2 * relTheta);
+            const f_t_bar = F_radial_total * A * Math.sin(2 * relTheta);
+            
+            dax += f_r_bar * (p.x/r_cyl) - f_t_bar * (p.y/r_cyl);
+            day += f_r_bar * (p.y/r_cyl) + f_t_bar * (p.x/r_cyl);
+        }
+          
+        if (p.isCluster) {
+            const r_scaled = Math.max(0.001, r_sph/rs);
+            const rhoLocal = (rho0 * haloScale) / (r_scaled * Math.pow(1 + r_scaled, 2));
+            const vSq = p.vx*p.vx + p.vy*p.vy + p.vz*p.vz;
+            const vMag = Math.max(0.001, Math.sqrt(vSq));
+            const a_df = -(DYNAMICAL_FRICTION_COEFF * G * G * p.mass * rhoLocal) / (vSq + 0.1);
+            dax += a_df * (p.vx / vMag); day += a_df * (p.vy / vMag); daz += a_df * (p.vz / vMag);
+        }
+        
+        p.ax = dax; p.ay = day; p.az = daz;
+      }
+    }
+
+    function calculateProjectedOrbit(star) {
+        projectedOrbitPath = []; let px = star.x, py = star.y, pz = star.z, pvx = star.vx, pvy = star.vy, pvz = star.vz;
+        let ax = 0, ay = 0, az = 0;
+        
+        for(let i = 0; i < 300; i++) {
+            const r_cyl = Math.max(0.1, Math.sqrt(px*px + py*py));
+            const r_sph = Math.max(0.1, Math.sqrt(px*px + py*py + pz*pz)); 
+            
+            const M_sph = getDarkMatterMass(r_sph) + bulgeMass + (blackHoles[0] ? blackHoles[0].mass : 0);
+            const F_sph = (G * M_sph) / (r_sph*r_sph + FORCE_SOFTENING * FORCE_SOFTENING);
+            
+            ax = -F_sph*(px/r_sph); 
+            ay = -F_sph*(py/r_sph); 
+            az = -F_sph*(pz/r_sph);
+            
+            const MN_a = 200.0; const MN_b = 20.0;
+            const z_term = Math.sqrt(pz*pz + MN_b*MN_b);
+            const a_z_term = MN_a + z_term;
+            const denom = Math.pow(r_cyl*r_cyl + a_z_term*a_z_term, 1.5);
+            
+            ax += -(G * totalDiskMass * px) / denom;
+            ay += -(G * totalDiskMass * py) / denom;
+            az += -(G * totalDiskMass * pz * a_z_term) / (z_term * denom);
+
+            pvx += ax * dt * 10; pvy += ay * dt * 10; pvz += az * dt * 10;
+            px += pvx * dt * 10; py += pvy * dt * 10; pz += pvz * dt * 10;
+            projectedOrbitPath.push({x: px, y: py, z: pz});
+        }
+    }
+
+    function gaussianRandom(m=0,s=1){const u1=Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;}
+    
+    let lastEnergy = {kinetic: 0, potential: 0, total: 0};
+    function computeTotalEnergy(allParticles){
+      if(frameCount % 60 !== 0 && frameCount !== 0) return lastEnergy;
+      let T=0,U=0;
+      const MN_a = 200.0, MN_b = 20.0;
+      for(const p of allParticles){
+        T+=0.5*p.mass*(p.vx*p.vx+p.vy*p.vy+p.vz*p.vz); 
+        const r_sph=Math.sqrt(p.x*p.x+p.y*p.y+p.z*p.z);
+        const r_cyl=Math.sqrt(p.x*p.x+p.y*p.y);
+        if(r_sph>0) {
+          const M_sph = getDarkMatterMass(r_sph) + bulgeMass + (blackHoles[0] ? blackHoles[0].mass : 0);
+          const U_sph = -(G*p.mass*M_sph)/r_sph; 
+          const U_disk = -(G*p.mass*totalDiskMass) / Math.sqrt(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(p.z*p.z + MN_b*MN_b), 2));
+          U += U_sph + U_disk;
+        }
+      }
+      return (lastEnergy = {kinetic: T, potential: U, total: T+U});
+    }
+
+    function formatTime(y){if(y>=1e9)return`${(y/1e9).toFixed(1)} Gyr`;if(y>=1e6)return`${(y/1e6).toFixed(1)} Myr`;return`${Math.round(y/1e3)*1e3} yr`;}
+
+    function project3DTo2D(x, y, z) {
+        const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
+        const cosY = Math.cos(rY), sinY = Math.sin(rY), x1 = x * cosY + z * sinY, z1 = -x * sinY + z * cosY;
+        const cosX = Math.cos(rX), sinX = Math.sin(rX), y2 = y * cosX - z1 * sinX, z2 = y * sinX + z1 * cosX;
+        const sf = isOrthographicRender ? 1.0 : (1000 / (1000 + z2)); 
+        return { screenX: centerX + x1 * sf * highResMult * scale + translateX, screenY: centerY + y2 * sf * highResMult * scale + translateY, rawX: x1 * sf, rawY: y2 * sf, depth: z2 };
+    }
+    
+    function getRawProjection(x, y, z) {
+        const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
+        const cosY = Math.cos(rY), sinY = Math.sin(rY), x1 = x * cosY + z * sinY, z1 = -x * sinY + z * cosY;
+        const cosX = Math.cos(rX), sinX = Math.sin(rX), y2 = y * cosX - z1 * sinX, z2 = y * sinX + z1 * cosX;
+        const sf = isOrthographicRender ? 1.0 : (1000 / (1000 + z2)); 
+        return { rawX: x1 * sf, rawY: y2 * sf, depth: z2 };
+    }
+
+    function getStarUnderCursor(mouseX, mouseY, radius) {
+        let bestStar = null;
+        let bestDistSq = radius * radius;
+        let bestDepth = Infinity;
+
+        for (const star of stars) {
+            let p = getRawProjection(star.x, star.y, star.z);
+            let sx = p.rawX * scale + translateX + centerX;
+            let sy = p.rawY * scale + translateY + centerY;
+            let dx = sx - mouseX;
+            let dy = sy - mouseY;
+            let distSq = dx * dx + dy * dy;
+
+            if (distSq <= radius * radius) {
+                if (distSq < bestDistSq - 0.01 || (Math.abs(distSq - bestDistSq) < 0.01 && p.depth < bestDepth)) {
+                    bestDistSq = distSq;
+                    bestDepth = p.depth;
+                    bestStar = star;
+                }
+            }
+        }
+        return bestStar;
+    }
+
+    function updatePhysics(steps) {
+      if(isPaused) return;
+      for (let step = 0; step < steps; step++) {
+        elapsedTime += dt * yearsPerStep;
+        patternAngle += 0.0005 * dt; 
+        barAngle += 0.0015 * dt; 
+        
+        const presetId = galaxyTypePresetSelect.value;
+        if (presetId === "ring") {
+            ringShockRadius += 10.0 * dt; 
+        }
+
+        for(const bh of blackHoles) { bh.massAccretedThisFrame = 0; bh.accretionGlow *= 0.95; }
+
+        const allParticles = [...blackHoles, ...stars, ...gasClouds];
+        
+        if (useLeapfrog) {
+            for(let i=0; i<allParticles.length; i++) {
+                const p = allParticles[i];
+                if (p.isBH) { p.x = 0; p.y = 0; p.z = 0; p.vx = 0; p.vy = 0; p.vz = 0; continue; }
+                p.vx += p.ax * 0.5 * dt; p.vy += p.ay * 0.5 * dt; p.vz += p.az * 0.5 * dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+            }
+            computeAccelerations(allParticles);
+            for(let i=0; i<allParticles.length; i++) {
+                const p = allParticles[i];
+                if (p.isBH) continue;
+                p.vx += p.ax * 0.5 * dt; p.vy += p.ay * 0.5 * dt; p.vz += p.az * 0.5 * dt;
+            }
+        } else {
+            computeAccelerations(allParticles);
+            for(let i=0; i<allParticles.length; i++) {
+                const p = allParticles[i];
+                if (p.isBH) { p.x = 0; p.y = 0; p.z = 0; p.vx = 0; p.vy = 0; p.vz = 0; continue; }
+                p.vx += p.ax * dt; p.vy += p.ay * dt; p.vz += p.az * dt;
+                p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+            }
+        }
+        
+        const bh = blackHoles[0];
+        if (bh) {
+            const accretionRadiusSq = bh.radius * bh.radius;
+            const BH_MASS_SCALE = 0.001; 
+
+            for (let i = gasClouds.length - 1; i >= 0; i--) {
+                const cloud = gasClouds[i], dx = cloud.x - bh.x, dy = cloud.y - bh.y, dz = cloud.z - bh.z;
+                if (dx*dx+dy*dy+dz*dz < accretionRadiusSq && Math.random() < ACCRETION_PROBABILITY) {
+                    const scaledCloudMass = cloud.mass * BH_MASS_SCALE;
+                    bh.mass += scaledCloudMass; 
+                    bh.massAccretedThisFrame += scaledCloudMass; 
+                    bh.accretionGlow = Math.min(1.0, bh.accretionGlow + 0.5); 
+                    gasClouds.splice(i, 1);
+                }
+            }
+            for (let i = stars.length - 1; i >= 0; i--) {
+                const star = stars[i], dx = star.x - bh.x, dy = star.y - bh.y, dz = star.z - bh.z;
+                if (dx*dx+dy*dy+dz*dz < accretionRadiusSq && Math.random() < ACCRETION_PROBABILITY) {
+                    const scaledStarMass = star.mass * BH_MASS_SCALE;
+                    bh.mass += scaledStarMass; 
+                    bh.massAccretedThisFrame += scaledStarMass; 
+                    bh.accretionGlow = Math.min(1.0, bh.accretionGlow + 1.0); 
+                    stars.splice(i, 1);
+                }
+            }
+            bh.radius = Math.max(15.0, baseEventHorizon * bh.mass); 
+            
+            if (frameCount % 10 === 0) {
+                massSlider.value = bh.mass; 
+                massValue.textContent = bh.mass.toFixed(1);
             }
         }
 
-        async function createHandLandmarker() {
-            infoDisplay.innerText = 'Loading Hand Tracking Model...';
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/wasm");
-            handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                    delegate: "GPU"
-                },
-                runningMode: "VIDEO",
-                numHands: 2
-            });
-            infoDisplay.innerText = 'Ready! Show your hands.';
-        }
-        createHandLandmarker();
-
-        async function setupWebcam() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-                video.srcObject = stream;
-                video.addEventListener("loadeddata", predictWebcam);
-            } catch (err) {
-                infoDisplay.innerText = "Webcam access denied. Please allow camera access.";
+        if (showJets && bh && bh.massAccretedThisFrame > JET_ACCRETION_SPIKE_THRESHOLD) bh.jetTimer = JET_DURATION;
+        if (bh && bh.jetTimer > 0) {
+            bh.jetTimer--;
+            for (let i = 0; i < JET_PARTICLES_PER_STEP; i++) {
+                const rVx = gaussianRandom(0, JET_VELOCITY * 0.05), rVy = gaussianRandom(0, JET_VELOCITY * 0.05);
+                jetParticles.push({ x: bh.x, y: bh.y, z: bh.z, vx: rVx, vy: rVy, vz: JET_VELOCITY, lifetime: JET_LIFETIME });
+                jetParticles.push({ x: bh.x, y: bh.y, z: bh.z, vx: rVx, vy: rVy, vz: -JET_VELOCITY, lifetime: JET_LIFETIME });
             }
         }
-        setupWebcam();
+        for (let i = jetParticles.length - 1; i >= 0; i--) {
+            const p = jetParticles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.lifetime -= 1;
+            if (p.lifetime <= 0) { jetParticles.splice(i, 1); continue; }
+            for (const cloud of gasClouds) {
+                const dx = cloud.x - p.x, dy = cloud.y - p.y, dz = cloud.z - p.z, distSq = dx*dx + dy*dy + dz*dz;
+                if (distSq < JET_INTERACTION_RADIUS * JET_INTERACTION_RADIUS) {
+                    const dist = Math.max(0.1, Math.sqrt(distSq)), kick = (JET_KICK_FORCE / (dist + 1)) * dt;
+                    cloud.vx += kick * (dx / dist); cloud.vy += kick * (dy / dist); cloud.vz += kick * (dz / dist); 
+                    cloud.heat += JET_HEATING * 10 * dt; 
+                }
+            }
+        }
 
-        function predictWebcam() {
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        for (let i = gasClouds.length - 1; i >= 0; i--) {
+          const cloud = gasClouds[i], stage = galaxyStageSelect.value, stageP = stagePressureParams[stage];
+          const presetType = GALAXY_PRESETS[presetId].type;
+          
+          cloud.heat = Math.max(5, cloud.heat * (1 - 0.05 * dt)); 
+          const r_cyl = Math.max(0.1, Math.sqrt(cloud.x*cloud.x + cloud.y*cloud.y));
+          
+          if (presetType === "spiral") {
+              if (r_cyl > 50 && r_cyl < galaxyRadius) {
+                  const theta = Math.atan2(cloud.y, cloud.x);
+                  const m_arms = GALAXY_PRESETS[presetId].armCount;
+                  const phase = m_arms * (theta - patternAngle) - (m_arms / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
+                  
+                  if (Math.cos(phase) > 0.8) { 
+                      cloud.heat += 15.0 * dt; 
+                  }
+              }
+          } else {
+              const shearHeating = (12.0 / (r_cyl * 0.005 + 1.0)) * dt; 
+              cloud.heat += shearHeating + (Math.random() * 2.0 * dt);
+          }
+          
+          if (presetId === "ring") {
+              const distToShock = r_cyl - ringShockRadius;
+              if (distToShock > 0 && distToShock < 80) {
+                  cloud.vx += (cloud.x/r_cyl) * 8.0 * dt;
+                  cloud.vy += (cloud.y/r_cyl) * 8.0 * dt;
+                  cloud.heat *= 0.95; 
+              }
+          }
+          
+          let isCold = cloud.heat < 15;
+          cloud.size = isCold ? k * Math.pow(cloud.mass, 1/3) : k * Math.pow(cloud.mass, 1/3) * (1 + cloud.heat/100);
+          cloud.vz *= (1 - 0.05 * dt); 
 
-            if (handLandmarker && video.readyState >= 2) {
-                const results = handLandmarker.detectForVideo(video, performance.now());
+          const maxStars = stageP.maxNormal;
+          if (isCold && cloud.starsCreated < maxStars) {
+            cloud.spawnCountThisSecond += (1 * dt);
+            if (cloud.spawnCountThisSecond >= 1) {
+              const newStarCount = Math.floor(cloud.spawnCountThisSecond);
+              for (let j = 0; j < newStarCount; j++) {
+                if(cloud.mass <= starMass) break;
                 
-                canvasCtx.save();
-                canvasCtx.scale(-1, 1);
-                canvasCtx.translate(-canvasElement.width, 0);
-
-                let activePinchInfo = "";
+                const massVariation = starMass * (0.5 + Math.random());
+                const initialZ = cloud.metallicity;
+                const lifetimeMultiplier = 0.8 + 0.2 * Math.min(1.0, initialZ);
+                const tempMultiplier = 1.2 - 0.2 * Math.min(1.0, initialZ);
                 
-                if (results.landmarks && results.landmarks.length > 0) {
-                    results.landmarks.forEach((landmarks, handIndex) => {
-                        const handId = `hand${handIndex}`;
-                        const wrist = landmarks[0];
-                        
-                        const rawHandY = wrist.y;
-                        smoothedHandY[handIndex] = PITCH_SMOOTHING_FACTOR * rawHandY + (1 - PITCH_SMOOTHING_FACTOR) * smoothedHandY[handIndex];
-                        const handY = smoothedHandY[handIndex]; 
+                const lifetimeInSteps = ((BASE_LIFETIME_YEARS / Math.pow(massVariation / starMass, 2.5)) / yearsPerStep) * lifetimeMultiplier;
+                const baseTemp = (3000 + (massVariation / 1.5) * 27000) * tempMultiplier;
+                
+                stars.push({ x: cloud.x+(Math.random()-.5)*cloud.size, y: cloud.y+(Math.random()-.5)*cloud.size, z: cloud.z+(Math.random()-.5)*cloud.size, vx: cloud.vx, vy: cloud.vy, vz: cloud.vz, mass: massVariation, initialMass: massVariation, size: 0.5+Math.random(), trail: new Float32Array(MAX_TRAIL_LENGTH*3), trailIdx:0, trailCount:0, age:0, lifetime: lifetimeInSteps, temperature: baseTemp, metallicity: initialZ, ax: cloud.ax, ay: cloud.ay, az: cloud.az });
+                cloud.mass -= starMass; cloud.starsCreated++;
+              }
+              cloud.spawnCountThisSecond -= newStarCount;
+            }
+          }
+          if (cloud.mass < 0.1 || cloud.starsCreated >= maxStars) gasClouds.splice(i, 1);
+        }
 
-                        const thumbTip = landmarks[4];
+        for (let i = stars.length - 1; i >= 0; i--) {
+            const star = stars[i]; star.age += dt; star.temperature = Math.max(3000, star.temperature * (1 - star.age / star.lifetime));
+            
+            if (showStreaks && currentFilter !== 'spectroscopy') {
+                star.trail[star.trailIdx*3] = star.x; star.trail[star.trailIdx*3+1] = star.y; star.trail[star.trailIdx*3+2] = star.z;
+                star.trailIdx = (star.trailIdx + 1) % MAX_TRAIL_LENGTH;
+                if(star.trailCount < MAX_TRAIL_LENGTH) star.trailCount++;
+            }
 
-                        fingerNames.forEach(fingerName => {
-                            const pinchId = `${handId}-${fingerName}`;
-                            const fingerTip = landmarks[fingerIndices[fingerName]];
-                            const distance = Math.sqrt(Math.pow(thumbTip.x - fingerTip.x, 2) + Math.pow(thumbTip.y - fingerTip.y, 2) + Math.pow(thumbTip.z - fingerTip.z, 2));
-
-                            if (distance < PINCH_THRESHOLD) {
-                                pinchGraceCounters[handId][fingerName] = PINCH_OFF_GRACE_FRAMES;
-                                
-                                if (!pinchStates[handId][fingerName]) {
-                                    pinchStates[handId][fingerName] = true;
-                                    activeNotes[pinchId] = startNote(noteMap[handId][fingerName], handY);
-                                }
-                                
-                                if (activeNotes[pinchId]) {
-                                    const noteData = activeNotes[pinchId];
-                                    const newFrequency = noteData.baseFrequency * Math.pow(2, (1 - handY) * PITCH_RANGE_OCTAVES);
-                                    noteData.oscillator.frequency.linearRampToValueAtTime(newFrequency, audioContext.currentTime + 0.05);
-                                }
-
-                                activePinchInfo += ` | ${fingerName.toUpperCase()} `;
-                                canvasCtx.beginPath();
-                                canvasCtx.strokeStyle = 'cyan';
-                                canvasCtx.lineWidth = 6;
-                                canvasCtx.moveTo(thumbTip.x * canvasElement.width, thumbTip.y * canvasElement.height);
-                                canvasCtx.lineTo(fingerTip.x * canvasElement.width, fingerTip.y * canvasElement.height);
-                                canvasCtx.stroke();
-
-                            } else {
-                                if (pinchGraceCounters[handId][fingerName] > 0) {
-                                    pinchGraceCounters[handId][fingerName]--;
-                                }
-                            }
-                        });
-
-                        // --- MODIFIED DRAWING LOGIC FOR LANDMARKS ---
-                        landmarks.forEach(point => {
-                            // Draw the outer glow
-                            canvasCtx.fillStyle = "rgba(255, 255, 255, 0.6)"; // Semi-transparent white
-                            canvasCtx.beginPath();
-                            canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 4, 0, 2 * Math.PI); // Radius of 4
-                            canvasCtx.fill();
-                            
-                            // Draw the inner dot
-                            canvasCtx.fillStyle = "rgba(255, 0, 100, 1)"; // Solid pink
-                            canvasCtx.beginPath();
-                            canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 2, 0, 2 * Math.PI); // Radius of 2
-                            canvasCtx.fill();
-                        });
-                        // --- END OF MODIFIED SECTION ---
-
+            if (star.age >= star.lifetime) {
+                if (star.initialMass > MASSIVE_STAR_THRESHOLD) {
+                    
+                    let remnantMass = 1.4; 
+                    if (star.initialMass > 20.0) {
+                        remnantMass = 3.0 + (star.initialMass * 0.1); 
+                    }
+                    
+                    let ejectedMass = star.initialMass - remnantMass;
+                    let numFragments = 8;
+                    let massPerFragment = ejectedMass / numFragments;
+                    let explosionVelocity = 35; 
+                    
+                    remnants.push({
+                        x: star.x, y: star.y, z: star.z,
+                        age: 0,
+                        lifetime: 50000000 / yearsPerStep, 
+                        maxRadius: SUPERNOVA_RADIUS * 2.5
                     });
+
+                    for (let f = 0; f < numFragments; f++) {
+                        let phi = Math.acos(1 - 2 * (f + 0.5) / numFragments);
+                        let theta = Math.PI * (1 + Math.sqrt(5)) * (f + 0.5);
+                        let dirX = Math.sin(phi) * Math.cos(theta);
+                        let dirY = Math.sin(phi) * Math.sin(theta);
+                        let dirZ = Math.cos(phi);
+
+                        gasClouds.push({
+                            x: star.x + dirX * 2, y: star.y + dirY * 2, z: star.z + dirZ * 2,
+                            vx: (star.vx * 0.5) + (dirX * explosionVelocity), 
+                            vy: (star.vy * 0.5) + (dirY * explosionVelocity), 
+                            vz: (star.vz * 0.5) + (dirZ * explosionVelocity),
+                            ax: 0, ay: 0, az: 0, 
+                            mass: massPerFragment,
+                            heat: 5000, 
+                            size: k * Math.pow(massPerFragment, 1/3) * 1.5,
+                            galaxyIndex: 0,
+                            starsCreated: 0,
+                            spawnCountThisSecond: 0,
+                            metallicity: star.metallicity + SUPERNOVA_ENRICHMENT
+                        });
+                    }
+
+                    for (const other of gasClouds) {
+                        const dx = other.x - star.x, dy = other.y - star.y, dz = other.z - star.z;
+                        const r2 = dx*dx + dy*dy + dz*dz;
+                        if (r2 < SUPERNOVA_RADIUS * SUPERNOVA_RADIUS && r2 > 0) {
+                            const r = Math.max(0.1, Math.sqrt(r2));
+                            const force = SUPERNOVA_FORCE / (r2 * 0.1 + 25.0); 
+                            other.vx += force * (dx/r); 
+                            other.vy += force * (dy/r); 
+                            other.vz += force * (dz/r);
+                            other.heat += 500;
+                            other.metallicity += (star.initialMass * 0.5) / (r2 * 0.05 + 1);
+                        }
+                    }
                 }
                 
-                Object.keys(pinchStates).forEach(handId => {
-                    fingerNames.forEach(fingerName => {
-                        const pinchId = `${handId}-${fingerName}`;
-                        if (pinchGraceCounters[handId][fingerName] === 0 && pinchStates[handId][fingerName]) {
-                            pinchStates[handId][fingerName] = false;
-                            stopNote(activeNotes[pinchId]);
-                            delete activeNotes[pinchId];
-                        }
-                    });
-                });
-
-                infoDisplay.textContent = activePinchInfo ? activePinchInfo + "|" : "Pinch your fingers to play!";
-                canvasCtx.restore();
+                const selIdx = selectedStars.indexOf(star);
+                if (selIdx > -1) { selectedStars.splice(selIdx, 1); }
+                if (hoveredStar === star) { hoveredStar = null; }
+                
+                stars.splice(i, 1);
             }
-
-            window.requestAnimationFrame(predictWebcam);
         }
-    </script>
+
+        for (let i = remnants.length - 1; i >= 0; i--) {
+            remnants[i].age += dt;
+            if (remnants[i].age >= remnants[i].lifetime) {
+                remnants.splice(i, 1);
+            }
+        }
+      }
+    }
+    
+    function drawDarkMatterHalo(ctx) { 
+        if(!showDarkMatter || currentFilter === 'xray' || currentFilter === 'ultraviolet' || currentFilter === 'spectroscopy') return;
+        for(const bh of blackHoles){
+            let p = getRawProjection(bh.x, bh.y, bh.z);
+            let sx = p.rawX * scale + translateX + centerX;
+            let sy = p.rawY * scale + translateY + centerY;
+            for(let r=50;r<=galaxyRadius*2;r+=20){
+                const preset=GALAXY_PRESETS[galaxyTypePresetSelect.value];
+                const x=r/rs,d=(rho0*preset.HALO_DENSITY_SCALE)/(x*(1+x)*(1+x)),o=Math.min(0.1,(d/(rho0*preset.HALO_DENSITY_SCALE))*0.2);
+                ctx.beginPath();
+                ctx.arc(sx, sy, r * scale, 0, 2*Math.PI);
+                ctx.fillStyle=`rgba(100,100,255,${o})`;ctx.fill();
+            }
+        }
+    }
+    
+    function drawGridOverlay(ctx) { 
+        if(!showGrid) return;
+        const m = highResMult;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; 
+        ctx.lineWidth = 1 * m;
+
+        const maxRadius = galaxyRadius * 2.5; 
+        const step = 200; 
+
+        for (let r = step; r <= maxRadius; r += step) {
+            ctx.beginPath();
+            for (let theta = 0; theta <= Math.PI * 2; theta += 0.05) {
+                const x = r * Math.cos(theta);
+                const y = r * Math.sin(theta);
+                let p = getRawProjection(x, y, 0);
+                const sx = p.rawX * scale + translateX + centerX;
+                const sy = p.rawY * scale + translateY + centerY;
+                if (theta === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) {
+            const theta = (Math.PI / 4) * i;
+            const dx = Math.cos(theta);
+            const dy = Math.sin(theta);
+
+            let p1 = getRawProjection(-maxRadius * dx, -maxRadius * dy, 0);
+            let p2 = getRawProjection(maxRadius * dx, maxRadius * dy, 0);
+
+            const sx1 = p1.rawX * scale + translateX + centerX;
+            const sy1 = p1.rawY * scale + translateY + centerY;
+            const sx2 = p2.rawX * scale + translateX + centerX;
+            const sy2 = p2.rawY * scale + translateY + centerY;
+
+            ctx.moveTo(sx1, sy1);
+            ctx.lineTo(sx2, sy2);
+        }
+        ctx.stroke();
+    }
+    
+    function drawOrientationWidget(ctx) { 
+        const m = highResMult;
+        const wX=ctx.canvas.width-60*m, wY=ctx.canvas.height-60*m, r=10*m;
+        let pX=getRawProjection(30,0,0), pY=getRawProjection(0,30,0), pZ=getRawProjection(0,0,30), pC=getRawProjection(0,0,0);
+        
+        const sX={x:wX+(pX.rawX-pC.rawX)*m, y:wY+(pX.rawY-pC.rawY)*m, l:'X',c:'red'};
+        const sY={x:wX+(pY.rawX-pC.rawX)*m, y:wY+(pY.rawY-pC.rawY)*m, l:'Y',c:'green'};
+        const sZ={x:wX+(pZ.rawX-pC.rawX)*m, y:wY+(pZ.rawY-pC.rawY)*m, l:'Z',c:'blue'};
+        
+        ctx.lineWidth=2*m; ctx.font=(12*m)+'px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.beginPath();ctx.moveTo(wX,wY);ctx.lineTo(sX.x,sX.y);ctx.strokeStyle=sX.c;ctx.stroke();
+        ctx.beginPath();ctx.moveTo(wX,wY);ctx.lineTo(sY.x,sY.y);ctx.strokeStyle=sY.c;ctx.stroke();
+        ctx.beginPath();ctx.moveTo(wX,wY);ctx.lineTo(sZ.x,sZ.y);ctx.strokeStyle=sZ.c;ctx.stroke();
+        ctx.beginPath();ctx.arc(sX.x,sX.y,r,0,2*Math.PI);ctx.fillStyle=sX.c;ctx.fill();ctx.fillStyle='white';ctx.fillText(sX.l,sX.x,sX.y);
+        ctx.beginPath();ctx.arc(sY.x,sY.y,r,0,2*Math.PI);ctx.fillStyle=sY.c;ctx.fill();ctx.fillStyle='white';ctx.fillText(sY.l,sY.x,sY.y);
+        ctx.beginPath();ctx.arc(sZ.x,sZ.y,r,0,2*Math.PI);ctx.fillStyle=sZ.c;ctx.fill();ctx.fillStyle='white';ctx.fillText(sZ.l,sZ.x,sZ.y);
+    }
+
+    function takeCustomScreenshot(auto=false) {
+        const scaleSelect = document.getElementById('screenshotScale');
+        const mult = scaleSelect ? parseInt(scaleSelect.value) : 1;
+        captureScreenshotRequest = { pending: true, auto: auto, mult: mult };
+    }
+    
+    function updateSnapshotDisplay() {const l=document.getElementById('snapshotList');l.innerHTML='';snapshots.forEach(s=>{const d=document.createElement('div');d.className='snapshot';const i=document.createElement('img');i.src=s.image;const p1=document.createElement('p');p1.textContent=`Time: ${formatTime(s.time)}`;const p2=document.createElement('p');p2.textContent=`Stability: ${s.stability}`;d.append(i,p1,p2);l.appendChild(d);});l.scrollTop=l.scrollHeight;}
+    
+    function getStarColor(star){
+        let r, g, b, a;
+        
+        const dist=Math.sqrt(star.x*star.x+star.y*star.y);
+        const l=Math.min(1,Math.pow(star.mass/starMass,0.05)*(star.temperature/6000));
+        
+        a = Math.min(1.0, 0.4 + l * 0.6); 
+        
+        if (currentFilter === 'spectroscopy') {
+            let z = Math.min(2.0, star.metallicity);
+            if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } 
+            else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } 
+            else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; } 
+            a *= 0.8; 
+            star.renderSize = star.size * (0.1 + l * 1.2);
+            return [r, g, b, a];
+        }
+        
+        if (!useRealisticColors) {
+            const t = star.temperature;
+            if(t > 10000){ r = 0.6; g = 0.7; b = 1.0; }
+            else if(t > 6000){ r = 0.9; g = 0.95; b = 1.0; }
+            else if(t > 4000){ r = 1.0; g = 0.9; b = 0.6; }
+            else { r = 1.0; g = 0.5; b = 0.2; }
+        } else {
+            let temp = star.temperature / 100;
+            if (temp <= 66) {
+                r = 255;
+                g = temp;
+                g = 99.4708025861 * Math.log(g) - 161.1195681661;
+                if (temp <= 19) { b = 0; }
+                else {
+                    b = temp - 10;
+                    b = 138.5177312231 * Math.log(b) - 305.0447927307;
+                }
+            } else {
+                r = temp - 60;
+                r = 329.698727446 * Math.pow(r, -0.1332047592);
+                g = temp - 60;
+                g = 288.1221695283 * Math.pow(g, -0.0755148492);
+                b = 255;
+            }
+            r = Math.min(255, Math.max(0, r)) / 255;
+            g = Math.min(255, Math.max(0, g)) / 255;
+            b = Math.min(255, Math.max(0, b)) / 255;
+        }
+
+        if (currentFilter === 'infrared') {
+            if (star.temperature > 5000) { a *= 0.02; } 
+            else { r = 1.0; g = 0.3; b = 0.1; a *= 0.8; } 
+        } else if (currentFilter === 'ultraviolet') {
+            if (star.temperature < 7000) { a *= 0.02; } 
+            else { r = 0.5; g = 0.2; b = 1.0; a *= 0.8; } 
+        } else if (currentFilter === 'xray') {
+            a = 0.0; 
+        }
+
+        star.renderSize = star.size * (0.1 + l * 1.2);
+        return [r, g, b, a];
+    }
+
+    function draw() {
+      if (isDirectorMode && !isPaused) {
+          if (trackingTarget) {
+              if (stars.indexOf(trackingTarget) === -1) {
+                  trackingTarget = null;
+              } else {
+                  let targetRotY = -Math.atan2(trackingTarget.vx, trackingTarget.vz) * 180 / Math.PI;
+                  let targetRotX = Math.atan2(trackingTarget.vy, Math.hypot(trackingTarget.vx, trackingTarget.vz)) * 180 / Math.PI;
+
+                  let deltaY = (targetRotY - rotationY) % 360;
+                  if (deltaY > 180) deltaY -= 360;
+                  if (deltaY < -180) deltaY += 360;
+                  rotationY += deltaY * 0.02 * physicsSteps;
+
+                  let deltaX = (targetRotX - rotationX) % 360;
+                  if (deltaX > 180) deltaX -= 360;
+                  if (deltaX < -180) deltaX += 360;
+                  rotationX += deltaX * 0.02 * physicsSteps;
+
+                  scale += (chaseCamZoomTarget - scale) * 0.01 * physicsSteps; 
+
+                  const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
+                  const cosY = Math.cos(rY), sinY = Math.sin(rY);
+                  const cosX = Math.cos(rX), sinX = Math.sin(rX);
+                  const x1 = trackingTarget.x * cosY + trackingTarget.z * sinY;
+                  const z1 = -trackingTarget.x * sinY + trackingTarget.z * cosY;
+                  const y2 = trackingTarget.y * cosX - z1 * sinX;
+                  const z2 = trackingTarget.y * sinX + z1 * cosX;
+                  const sf = 1000 / (1000 + z2);
+
+                  let targetTX = -x1 * sf * scale;
+                  let targetTY = -y2 * sf * scale; 
+                  
+                  translateX += (targetTX - translateX) * 0.05 * physicsSteps;
+                  translateY += (targetTY - translateY) * 0.05 * physicsSteps;
+              }
+          } else {
+              rotationY += 0.05 * physicsSteps; 
+          }
+      }
+
+      if(!isPaused) updatePhysics(physicsSteps);
+      
+      gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.disable(gl.DEPTH_TEST);
+      gl.uniform1f(uExposureLoc, currentExposure);
+      gl.uniform1f(uIsOrthoLoc, 0.0); 
+      
+      let pIdx = 0;
+      let dIdx = 0; 
+      
+      function addPoint(x,y,z,size,type,r,g,b,a) {
+          if(pIdx >= MAX_RENDER_PARTICLES) return;
+          posData[pIdx*3]=x; posData[pIdx*3+1]=y; posData[pIdx*3+2]=z;
+          sizData[pIdx]=size; typData[pIdx]=type;
+          colData[pIdx*4]=r; colData[pIdx*4+1]=g; colData[pIdx*4+2]=b; colData[pIdx*4+3]=a;
+          pIdx++;
+      }
+      
+      function addDustPoint(x,y,z,size,type,r,g,b,a) {
+          if(dIdx >= MAX_RENDER_PARTICLES) return;
+          dustPosData[dIdx*3]=x; dustPosData[dIdx*3+1]=y; dustPosData[dIdx*3+2]=z;
+          dustSizData[dIdx]=size; dustTypData[dIdx]=type;
+          dustColData[dIdx*4]=r; dustColData[dIdx*4+1]=g; dustColData[dIdx*4+2]=b; dustColData[dIdx*4+3]=a;
+          dIdx++;
+      }
+
+      for(const bh of blackHoles) {
+          let bhR = 0.5 + bh.accretionGlow * 0.5, bhG = bh.accretionGlow * 0.5, bhB = 0.5 + bh.accretionGlow * 0.5, bhA = 1.0;
+          if (currentFilter === 'infrared') { bhR = 1.0; bhG = 0.2; bhB = 0.0; bhA = 0.3; }
+          if (currentFilter === 'ultraviolet') { bhR = 0.5; bhG = 0.0; bhB = 1.0; bhA = 0.8; }
+          if (currentFilter === 'xray') { bhR = 0.0; bhG = 0.8; bhB = 1.0; bhA = Math.min(1.0, 0.8 + bh.accretionGlow); }
+          if (currentFilter === 'spectroscopy') { bhR = 1.0; bhG = 1.0; bhB = 1.0; bhA *= 0.2; }
+          addPoint(bh.x, bh.y, bh.z, 8 * (1 + bh.accretionGlow * 2), 2, bhR, bhG, bhB, bhA);
+      }
+      
+      for(const jet of jetParticles) {
+          let jR = 0.8, jG = 0.9, jB = 1.0, jA = (jet.lifetime / JET_LIFETIME) * 0.9;
+          if (currentFilter === 'infrared') jA *= 0.1;
+          if (currentFilter === 'ultraviolet') { jR=0.5; jG=0.2; jB=1.0; }
+          if (currentFilter === 'xray') { jR=0.0; jG=0.9; jB=1.0; jA = Math.min(1.0, jA * 1.5); }
+          if (currentFilter === 'spectroscopy') { jR = 1.0; jG = 0.5; jB = 0.0; jA *= 0.5; }
+          addPoint(jet.x, jet.y, jet.z, 2, 3, jR, jG, jB, jA);
+      }
+      
+      for (const rem of remnants) {
+          let progress = rem.age / rem.lifetime;
+          let currentRadius = rem.maxRadius * Math.pow(progress, 0.4); 
+          let a = 1.0 - Math.pow(progress, 2.0); 
+          
+          let r = 0.2, g = 0.6, b = 1.0; 
+          if (currentFilter === 'xray') { r = 0.8; g = 0.2; b = 1.0; a = Math.min(1.0, a * 1.5); }
+          else if (currentFilter === 'infrared') { r = 1.0; g = 0.3; b = 0.1; a *= 0.5; }
+          else if (currentFilter === 'ultraviolet') { r = 0.5; g = 0.1; b = 1.0; a *= 0.8; }
+          else if (currentFilter === 'spectroscopy') { r = 1.0; g = 0.8; b = 0.0; a *= 0.8; }
+          
+          addPoint(rem.x, rem.y, rem.z, currentRadius * starVisualMult, 7.0, r, g, b, a * 0.8);
+      }
+      
+      for(const cloud of gasClouds) {
+          let shimmer = 0.8 + Math.sin(frameCount * 0.05 + cloud.x) * 0.2;
+          let gasAlpha = (cloud.heat > 50 ? 0.08 : 0.015) * shimmer * gasVisualMult; 
+
+          const presetType = galaxyTypePresetSelect.value;
+          if (GALAXY_PRESETS[presetType].type === "spiral") {
+              const r_cyl = Math.max(0.1, Math.sqrt(cloud.x*cloud.x + cloud.y*cloud.y));
+              if (r_cyl > bulgeRadius * 0.2) {
+                  const theta = Math.atan2(cloud.y, cloud.x);
+                  const m_arms = GALAXY_PRESETS[presetType].armCount;
+                  const phase = m_arms * (theta - patternAngle) - (m_arms / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / bulgeRadius);
+                  const phaseContribution = Math.pow(Math.max(0, Math.cos(phase)), 3);
+                  gasAlpha = ((cloud.heat > 50 ? 0.08 : 0.015) + 0.18 * phaseContribution) * shimmer * gasVisualMult; 
+              }
+          }
+          
+          let currentSize = cloud.size * gasVisualMult;
+          let gasR = 0.0, gasG = 0.8, gasB = 0.9;
+          let isDust = false;
+
+          // CRITICAL FIX: Only perfectly cold, highly metallic gas turns into dust.
+          if (currentFilter === 'infrared') {
+              if (cloud.heat < 30) { 
+                  gasR=1.0; gasG=0.3; gasB=0.0; 
+                  gasAlpha *= (0.5 + cloud.metallicity * 0.5); 
+              }
+              else { gasAlpha = 0.0; }
+          } else if (currentFilter === 'ultraviolet') {
+              if (cloud.heat > 40) { gasR=0.5; gasG=0.0; gasB=1.0; gasAlpha *= 0.8; }
+              else { gasAlpha = 0.0; }
+              if (cloud.heat < 30 && cloud.metallicity > 0.6) isDust = true;
+          } else if (currentFilter === 'xray') {
+              if (cloud.heat > 1000) { gasR=0.0; gasG=0.8; gasB=1.0; gasAlpha *= 1.0; }
+              else { gasAlpha = 0.0; }
+          } else if (currentFilter === 'spectroscopy') {
+              let z = Math.min(2.0, cloud.metallicity);
+              if (z < 0.5) { gasR = z*2; gasG = 0.5+z; gasB = 1.0; }
+              else if (z < 1.0) { gasR = 1.0; gasG = 1.0 - (z-0.5)*0.5; gasB = 1.0 - (z-0.5)*2; }
+              else { gasR = 1.0; gasG = 0.75 - (z-1.0)*0.5; gasB = 0.0; }
+              gasAlpha *= 0.8; 
+          } else { 
+              // VISIBLE LIGHT
+              if (cloud.heat > 50) { 
+                  gasR = 1.0; gasG = 0.2; gasB = 0.6; 
+                  gasAlpha *= 0.15; 
+              } else if (cloud.metallicity > 0.6 && cloud.heat < 30) {
+                  isDust = true; 
+              } else {
+                  gasAlpha *= 0.05; // Make pristine star-forming gas mostly transparent
+              }
+          }
+
+          if (isDust) {
+              // CRITICAL FIX: Faint alpha so it shadows organically over dense layers instead of an instant blackout
+              let dustAlpha = Math.min(1.0, cloud.metallicity * 0.02) * gasVisualMult;
+              if (currentFilter === 'ultraviolet') dustAlpha *= 1.5;
+              
+              if (dustAlpha > 0.001) {
+                  addDustPoint(cloud.x, cloud.y, cloud.z, currentSize * 1.5, 8.0, 0, 0, 0, dustAlpha);
+                  let rx = Math.sin(cloud.x * 12.3) * (currentSize * 1.2); 
+                  let ry = Math.cos(cloud.y * 45.6) * (currentSize * 1.2); 
+                  addDustPoint(cloud.x + rx, cloud.y + ry, cloud.z, currentSize * 1.0, 8.0, 0, 0, 0, dustAlpha * 1.2);
+                  addDustPoint(cloud.x - ry, cloud.y + rx, cloud.z, currentSize * 1.0, 8.0, 0, 0, 0, dustAlpha * 1.2);
+              }
+          } else if (gasAlpha > 0) {
+              addPoint(cloud.x, cloud.y, cloud.z, currentSize * 0.75, 1, gasR, gasG, gasB, gasAlpha * 0.4);
+              addPoint(cloud.x, cloud.y, cloud.z, 1.4 * gasVisualMult, 5, 0.5, gasG, 1.0, gasAlpha * 1.8);
+              let rx = Math.sin(cloud.x * 12.3) * (currentSize * 1.2); 
+              let ry = Math.cos(cloud.y * 45.6) * (currentSize * 1.2); 
+              addPoint(cloud.x + rx, cloud.y + ry, cloud.z, 1.0 * gasVisualMult, 5, gasR, gasG, gasB, gasAlpha * 1.0);
+              addPoint(cloud.x - ry, cloud.y + rx, cloud.z, 1.0 * gasVisualMult, 5, gasR, gasG, gasB, gasAlpha * 1.0);
+          }
+      }
+
+      for(const star of stars){
+        const c = getStarColor(star); 
+        
+        const isGiant = star.initialMass > MASSIVE_STAR_THRESHOLD && star.age < star.lifetime * 0.9;
+        const sSize = (star.renderSize||star.size) * starVisualMult * (isGiant ? 2.5 : 1.0);
+        
+        if (c[3] > 0.01) { 
+            addPoint(star.x, star.y, star.z, sSize, isGiant ? 6 : 0, c[0], c[1], c[2], c[3]);
+            
+            if (showStreaks && currentFilter !== 'spectroscopy') {
+                for(let j=0; j<star.trailCount; j++) {
+                    let idx = star.trailIdx - 1 - j; if (idx < 0) idx += MAX_TRAIL_LENGTH;
+                    addPoint(star.trail[idx*3], star.trail[idx*3+1], star.trail[idx*3+2], sSize*0.4, 0, c[0], c[1], c[2], c[3] * 0.4 * (1.0 - j/MAX_TRAIL_LENGTH));
+                }
+            }
+        }
+      }
+
+      if (captureScreenshotRequest.pending && !isProcessingScreenshots) {
+          captureScreenshotRequest.pending = false;
+          const mult = captureScreenshotRequest.mult;
+          const auto = captureScreenshotRequest.auto;
+          const multiAngle = document.getElementById('multiAngleScreenshot') && document.getElementById('multiAngleScreenshot').checked;
+          
+          const origScale = scale; const origTX = translateX; const origTY = translateY;
+          const origRotX = rotationX; const origRotY = rotationY;
+          
+          if (multiAngle) {
+              screenshotQueue.push({ suffix: `cam_${mult}x`, forceScale: origScale, forceTX: origTX, forceTY: origTY, forceRotX: origRotX, forceRotY: origRotY, isOrtho: false, mult: mult });
+              screenshotQueue.push({ suffix: `top_${mult}x`, forceScale: 0.4, forceTX: 0, forceTY: 0, forceRotX: 0, forceRotY: 0, isOrtho: true, mult: mult });
+              screenshotQueue.push({ suffix: `side_${mult}x`, forceScale: 0.75, forceTX: 0, forceTY: 0, forceRotX: -90, forceRotY: 0, isOrtho: true, mult: mult });
+          } else {
+              screenshotQueue.push({ suffix: `${mult}x`, forceScale: origScale, forceTX: origTX, forceTY: origTY, forceRotX: origRotX, forceRotY: origRotY, isOrtho: false, mult: mult });
+          }
+          isProcessingScreenshots = true;
+      }
+
+      if (isProcessingScreenshots && screenshotQueue.length > 0) {
+          const task = screenshotQueue.shift();
+          const origW = document.getElementById('sim-container').clientWidth;
+          const origH = document.getElementById('sim-container').clientHeight;
+          const origScale = scale; const origTX = translateX; const origTY = translateY;
+          const origCX = centerX; const origCY = centerY;
+          const origRotX = rotationX; const origRotY = rotationY;
+
+          isOrthographicRender = task.isOrtho;
+          highResMult = task.mult;
+          
+          glCanvas.width = origW * task.mult; glCanvas.height = origH * task.mult;
+          overlayCanvas.width = origW * task.mult; overlayCanvas.height = origH * task.mult;
+          gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+          
+          gl.clearColor(0,0,0,1);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          
+          scale = task.forceScale * task.mult; 
+          translateX = task.forceTX * task.mult; translateY = task.forceTY * task.mult;
+          centerX = glCanvas.width / 2; centerY = glCanvas.height / 2;
+          rotationX = task.forceRotX; rotationY = task.forceRotY;
+          
+          gl.uniform1f(uExposureLoc, currentExposure);
+          gl.uniform2f(uCanvasSizeLoc, glCanvas.width, glCanvas.height);
+          gl.uniform1f(uIsOrthoLoc, task.isOrtho ? 1.0 : 0.0);
+          
+          if (currentFilter !== 'xray' && currentFilter !== 'ultraviolet' && currentFilter !== 'spectroscopy') {
+              gl.bindBuffer(gl.ARRAY_BUFFER,bgPositionBuffer);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,bgSizeBuffer);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,bgTypeBuffer);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,bgColorBuffer);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);
+              gl.uniform2f(uTranslateLoc,0,0); gl.uniform1f(uScaleLoc, task.mult);
+              gl.uniform1f(uIs3DLoc, 0.0);
+              gl.drawArrays(gl.POINTS,0,numBackgroundDots);
+          }
+          
+          if (pIdx > 0) {
+              gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,posData.subarray(0,pIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,sizData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,typData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);
+              
+              gl.uniform2f(uTranslateLoc,translateX,translateY); gl.uniform1f(uScaleLoc,scale);
+              gl.uniform1f(uRotXLoc, rotationX * Math.PI / 180); gl.uniform1f(uRotYLoc, rotationY * Math.PI / 180);
+              gl.uniform1f(uIs3DLoc, 1.0); 
+              gl.drawArrays(gl.POINTS,0,pIdx); 
+          }
+          
+          if (dIdx > 0) {
+              gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
+              
+              gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustPosData.subarray(0,dIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustSizData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustTypData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustColData.subarray(0,dIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);
+              
+              gl.drawArrays(gl.POINTS,0,dIdx); 
+              
+              gl.blendFunc(gl.SRC_ALPHA, gl.ONE); 
+          }
+          
+          overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+          if(showGrid)drawGridOverlay(overlayCtx); 
+          if(showDarkMatter)drawDarkMatterHalo(overlayCtx);
+          
+          const c=document.createElement('canvas');c.width=glCanvas.width;c.height=glCanvas.height;const t=c.getContext('2d');t.drawImage(glCanvas,0,0);t.drawImage(overlayCanvas,0,0);
+          const i=c.toDataURL('image/png');
+          
+          const a=document.createElement('a');a.href=i;const n=new Date(),ts=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}_${String(n.getHours()).padStart(2,'0')}-${String(n.getMinutes()).padStart(2,'0')}-${String(n.getSeconds()).padStart(2,'0')}`;
+          a.download=`galaxy_${ts}_${formatTime(elapsedTime).replace(/\s/g,'-')}_${task.suffix}.png`;
+          a.click();
+
+          if (task.suffix.startsWith('cam') || task.suffix.includes('1x')) {
+              snapshots.push({image:i,time:Math.round(elapsedTime),stability:Math.round(stabilityIndex)});
+              updateSnapshotDisplay();
+          }
+          
+          isOrthographicRender = false;
+          highResMult = 1.0;
+          glCanvas.width = origW; glCanvas.height = origH;
+          overlayCanvas.width = origW; overlayCanvas.height = origH;
+          gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+          scale = origScale; translateX = origTX; translateY = origTY;
+          centerX = origCX; centerY = origCY;
+          rotationX = origRotX; rotationY = origRotY;
+
+          if (screenshotQueue.length > 0) {
+              requestAnimationFrame(draw);
+              return;
+          }
+          isProcessingScreenshots = false;
+      }
+
+      if (isProcessingScreenshots) {
+          requestAnimationFrame(draw);
+          return;
+      }
+      
+      gl.uniform2f(uTranslateLoc,0,0); gl.uniform1f(uScaleLoc,1); gl.uniform2f(uCanvasSizeLoc,glCanvas.width,glCanvas.height);
+      gl.uniform1f(uRotXLoc, 0); gl.uniform1f(uRotYLoc, 0); gl.uniform1f(uIs3DLoc, 0.0);
+      gl.uniform1f(uIsOrthoLoc, 0.0);
+      
+      if (currentFilter !== 'xray' && currentFilter !== 'ultraviolet' && currentFilter !== 'spectroscopy') {
+          gl.bindBuffer(gl.ARRAY_BUFFER,bgPositionBuffer);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aPositionLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER,bgSizeBuffer);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aSizeLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER,bgTypeBuffer);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aTypeLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER,bgColorBuffer);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
+          gl.drawArrays(gl.POINTS,0,numBackgroundDots);
+      }
+      
+      if (pIdx > 0) {
+          gl.uniform2f(uTranslateLoc,translateX,translateY); gl.uniform1f(uScaleLoc,scale);
+          gl.uniform1f(uRotXLoc, rotationX * Math.PI / 180); gl.uniform1f(uRotYLoc, rotationY * Math.PI / 180); gl.uniform1f(uIs3DLoc, 1.0);
+          
+          gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,posData.subarray(0,pIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aPositionLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,sizData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aSizeLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,typData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aTypeLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
+          gl.drawArrays(gl.POINTS,0,pIdx); 
+      }
+      
+      if (dIdx > 0) {
+          gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
+          
+          gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustPosData.subarray(0,dIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);
+          gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustSizData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);
+          gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustTypData.subarray(0,dIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);
+          gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,dustColData.subarray(0,dIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);
+          
+          gl.drawArrays(gl.POINTS,0,dIdx); 
+          
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE); 
+      }
+      
+      overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+      if(showGrid)drawGridOverlay(overlayCtx); 
+      if(showDarkMatter)drawDarkMatterHalo(overlayCtx);
+      drawOrientationWidget(overlayCtx); 
+
+      hoveredStar = null;
+      if (isPaused && currentMouseX > -1 && !isDragging && !isRotating && highResMult === 1) {
+          hoveredStar = getStarUnderCursor(currentMouseX, currentMouseY, SCANNER_RADIUS);
+
+          overlayCtx.beginPath();
+          overlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+          overlayCtx.lineWidth = 1.5;
+          overlayCtx.setLineDash([4, 4]);
+          overlayCtx.arc(currentMouseX, currentMouseY, SCANNER_RADIUS, 0, Math.PI * 2);
+          overlayCtx.stroke();
+
+          if (hoveredStar && selectedStars.indexOf(hoveredStar) === -1) {
+              let p = getRawProjection(hoveredStar.x, hoveredStar.y, hoveredStar.z);
+              let sx = p.rawX * scale + translateX + centerX;
+              let sy = p.rawY * scale + translateY + centerY;
+              overlayCtx.beginPath();
+              overlayCtx.strokeStyle = 'rgba(100, 255, 100, 0.9)';
+              overlayCtx.setLineDash([]);
+              overlayCtx.arc(sx, sy, 8, 0, Math.PI * 2);
+              overlayCtx.stroke();
+          }
+      }
+      
+      const popup = document.getElementById('starPopup');
+      
+      if (isDirectorMode) {
+          popup.style.display = 'none';
+      }
+      
+      if (selectedStars.length > 0) {
+          let s0 = selectedStars[0];
+          let p0 = getRawProjection(s0.x, s0.y, s0.z);
+          let sx0 = p0.rawX * scale + translateX + centerX;
+          let sy0 = p0.rawY * scale + translateY + centerY;
+          
+          if (!isDirectorMode) {
+              overlayCtx.beginPath();
+              overlayCtx.strokeStyle = 'white';
+              overlayCtx.lineWidth = 1.5 * highResMult;
+              overlayCtx.setLineDash([]);
+              overlayCtx.arc(sx0, sy0, 10 * highResMult, 0, Math.PI * 2);
+              overlayCtx.stroke();
+          }
+
+          if (isPaused && projectedOrbitPath.length > 0 && !isDirectorMode) {
+              overlayCtx.beginPath();
+              overlayCtx.strokeStyle = 'rgba(100, 200, 255, 0.4)';
+              overlayCtx.setLineDash([5 * highResMult, 5 * highResMult]);
+              overlayCtx.moveTo(sx0, sy0);
+              for (let pt of projectedOrbitPath) {
+                  let proj = getRawProjection(pt.x, pt.y, pt.z);
+                  overlayCtx.lineTo(proj.rawX * scale + translateX + centerX, proj.rawY * scale + translateY + centerY);
+              }
+              overlayCtx.stroke();
+          }
+
+          if (selectedStars.length === 1) {
+              if (highResMult === 1 && !isDirectorMode) {
+                  popup.style.display = 'block';
+                  popup.style.left = (sx0 + 20) + 'px';
+                  popup.style.top = (sy0 + 20) + 'px';
+                  
+                  let headerStr = `<div class="popup-header"><strong>Target Alpha</strong><span class="popup-toggle">${isPopupCollapsed ? '+' : '−'}</span></div>`;
+                  if (isPopupCollapsed) {
+                      popup.innerHTML = headerStr;
+                  } else {
+                      popup.innerHTML = headerStr + `
+                          <div class="stat-row"><span class="stat-label">Age:</span> <span class="stat-value">${formatTime(s0.age * yearsPerStep)}</span></div>
+                          <div class="stat-row"><span class="stat-label">Lifetime:</span> <span class="stat-value">${formatTime(s0.lifetime * yearsPerStep)}</span></div>
+                          <div class="stat-row"><span class="stat-label">Mass:</span> <span class="stat-value">${s0.mass.toFixed(2)} M☉</span></div>
+                          <div class="stat-row"><span class="stat-label">Temp:</span> <span class="stat-value">${Math.round(s0.temperature)} K</span></div>
+                          <div class="stat-row"><span class="stat-label">Metallicity:</span> <span class="stat-value">${s0.metallicity.toFixed(2)} Z☉</span></div>
+                      `;
+                  }
+              } else {
+                  popup.style.display = 'none';
+              }
+          } else if (selectedStars.length === 2) {
+              let s1 = selectedStars[1];
+              let p1 = getRawProjection(s1.x, s1.y, s1.z);
+              let sx1 = p1.rawX * scale + translateX + centerX;
+              let sy1 = p1.rawY * scale + translateY + centerY;
+              
+              if (!isDirectorMode) {
+                  overlayCtx.beginPath();
+                  overlayCtx.strokeStyle = 'white';
+                  overlayCtx.setLineDash([]);
+                  overlayCtx.arc(sx1, sy1, 10 * highResMult, 0, Math.PI * 2);
+                  overlayCtx.stroke();
+
+                  overlayCtx.beginPath();
+                  overlayCtx.strokeStyle = 'rgba(255, 100, 100, 0.8)';
+                  overlayCtx.lineWidth = 2 * highResMult;
+                  overlayCtx.setLineDash([8 * highResMult, 8 * highResMult]);
+                  overlayCtx.moveTo(sx0, sy0);
+                  overlayCtx.lineTo(sx1, sy1);
+                  overlayCtx.stroke();
+              }
+
+              if (highResMult === 1 && !isDirectorMode) {
+                  const dx = s1.x - s0.x;
+                  const dy = s1.y - s0.y;
+                  const dz = s1.z - s0.z;
+                  const distPc = Math.hypot(dx, dy, dz);
+                  const distLy = distPc * 3.262;
+                  
+                  const dvx = s1.vx - s0.vx;
+                  const dvy = s1.vy - s0.vx;
+                  const dvz = s1.vz - s0.vz;
+                  const relVel = Math.hypot(dvx, dvy, dvz) * 50; 
+                  
+                  const dotProd = dx*dvx + dy*dvy + dz*dvz;
+                  const shift = dotProd < 0 ? "<span style='color:#66aaff'>Approaching</span>" : "<span style='color:#ff6666'>Receding</span>";
+
+                  popup.style.display = 'block';
+                  popup.style.left = ((sx0 + sx1)/2 + 20) + 'px';
+                  popup.style.top = ((sy0 + sy1)/2 + 20) + 'px';
+                  
+                  let headerStr = `<div class="popup-header"><strong>Astrometry Report</strong><span class="popup-toggle">${isPopupCollapsed ? '+' : '−'}</span></div>`;
+                  if (isPopupCollapsed) {
+                      popup.innerHTML = headerStr;
+                  } else {
+                      popup.innerHTML = headerStr + `
+                          <div class="stat-row"><span class="stat-label">Distance:</span> <span class="stat-value">${distPc.toFixed(1)} pc</span></div>
+                          <div class="stat-row"><span class="stat-label">Light Travel:</span> <span class="stat-value">${distLy.toFixed(1)} ly</span></div>
+                          <div class="stat-row"><span class="stat-label">Velocity:</span> <span class="stat-value">${relVel.toFixed(1)} km/s</span></div>
+                          <div class="stat-row"><span class="stat-label">State:</span> <span class="stat-value">${shift}</span></div>
+                          <hr>
+                          <div class="section-title">Target Alpha</div>
+                          <div class="stat-row"><span class="stat-label">Mass:</span> <span class="stat-value">${s0.mass.toFixed(1)} M☉</span></div>
+                          <div class="stat-row"><span class="stat-label">Temp:</span> <span class="stat-value">${Math.round(s0.temperature)} K</span></div>
+                          <div class="stat-row"><span class="stat-label">Metals:</span> <span class="stat-value">${s0.metallicity.toFixed(2)} Z☉</span></div>
+                          <div class="section-title">Target Beta</div>
+                          <div class="stat-row"><span class="stat-label">Mass:</span> <span class="stat-value">${s1.mass.toFixed(1)} M☉</span></div>
+                          <div class="stat-row"><span class="stat-label">Temp:</span> <span class="stat-value">${Math.round(s1.temperature)} K</span></div>
+                          <div class="stat-row"><span class="stat-label">Metals:</span> <span class="stat-value">${s1.metallicity.toFixed(2)} Z☉</span></div>
+                      `;
+                  }
+              } else {
+                  popup.style.display = 'none';
+              }
+          }
+      } else {
+          if (highResMult === 1) popup.style.display = 'none';
+      }
+      
+      timerElement.textContent=`Time: ${formatTime(elapsedTime)}`;
+      const energy=computeTotalEnergy([...stars, ...blackHoles, ...gasClouds]);
+      stabilityIndex=Math.min(100,Math.max(0,(energy.kinetic/Math.abs(energy.potential))*100));
+      document.getElementById('stability').textContent=`Stability: ${Math.round(stabilityIndex)}`;
+      document.getElementById('energy').textContent=`Total Energy: ${energy.total.toExponential(2)}`;
+      document.getElementById('scale').textContent=`Scale: ${(pcPerPixel * glCanvas.width / scale).toFixed(0)} pc`;
+      
+      if (frameCount % 60 === 0) {
+          let tStarMass = 0, tGasMass = 0, tTemp = 0;
+          for (let s of stars) { tStarMass += s.mass; tTemp += s.temperature; }
+          for (let g of gasClouds) { tGasMass += g.mass; }
+          let avgTemp = stars.length > 0 ? tTemp / stars.length : 0;
+          let totalM = tStarMass + tGasMass;
+          let gasRatio = totalM > 0 ? tGasMass / totalM : 0;
+          
+          if (gasClouds.length === 0 || gasRatio < 0.01) currentEpoch = "Dead Elliptical";
+          else if (gasRatio < 0.1) currentEpoch = "Quenching Era";
+          else if (elapsedTime > 2e9) currentEpoch = "Mature Disk";
+          else if (avgTemp > 10000) currentEpoch = "Starburst Phase";
+          else currentEpoch = "Primordial Cloud";
+          
+          document.getElementById('epoch').textContent = `Epoch: ${currentEpoch}`;
+      }
+
+      const autoInterval = parseInt(screenshotIntervalSelect.value);
+      if (autoInterval > 0 && frameCount > 0 && !isPaused && (frameCount % autoInterval === 0)) {
+          takeCustomScreenshot(true); 
+      }
+
+      frameCount++; requestAnimationFrame(draw);
+    }
+
+    function initSimulation() {
+      const stage = galaxyStageSelect.value, presetId = galaxyTypePresetSelect.value, preset = GALAXY_PRESETS[presetId];
+      const peakStarCapacity = parseInt(starCountSlider.value); 
+      const gasAmountMultiplier = parseFloat(gasAmountSlider.value);
+      
+      centralBHMass = parseInt(massSlider.value);
+      blackHoles = [{x:0, y:0, z:0, vx:0, vy:0, vz:0, ax:0, ay:0, az:0, mass:centralBHMass, radius:Math.max(15.0, baseEventHorizon * centralBHMass), accretionGlow:0, jetTimer:0, massAccretedThisFrame:0, isBH:true}];
+      stars = []; gasClouds = []; jetParticles = []; selectedStars = []; remnants = []; document.getElementById('starPopup').style.display = 'none'; 
+      
+      glCanvas.style.cursor = "default";
+      isDirectorMode = false;
+      document.getElementById('directorModeBtn').textContent = "Toggle Director Mode";
+
+      const stageParams = {
+          new:   { starPct: 0.15, maxAge: 2e9,  avgGasMass: 200, baseGas: 20000 },
+          adult: { starPct: 0.70, maxAge: 8e9,  avgGasMass: 150, baseGas: 2000 },
+          dying: { starPct: 0.95, maxAge: 13.5e9, avgGasMass: 50,  baseGas: 50 }
+      }[stage];
+
+      const actualStarCount = Math.floor(peakStarCapacity * stageParams.starPct);
+      const gasCloudCount = Math.floor(stageParams.baseGas * gasAmountMultiplier);
+
+      const totalStarMass = actualStarCount * starMass;
+      const totalGasMass = gasCloudCount * stageParams.avgGasMass;
+      totalDiskMass = totalStarMass + totalGasMass; 
+
+      scale = 1.0;
+      translateX = 0; translateY = 0; 
+      pcPerPixel = totalSizePc / glCanvas.width;
+      
+      patternAngle = 0;
+      barAngle = 0;
+      ringShockRadius = bulgeRadius * 0.5; 
+      
+      const stageMaxAgeYears = stageParams.maxAge;
+      
+      const starCapacityControl = document.getElementById('starCountValue');
+      if (starCapacityControl) starCapacityControl.textContent = `${actualStarCount} / ${peakStarCapacity}`;
+
+      for(let i=0;i<actualStarCount;i++){
+        let r,theta,z;
+        if(Math.random()<0.3){
+            r=Math.random()*bulgeRadius;
+            theta=Math.random()*2*Math.PI;
+            const phi=Math.acos(2*Math.random()-1);
+            z=r*Math.cos(phi);
+            r=r*Math.sin(phi); 
+        }
+        else{ 
+            if (presetId === "ring") {
+                r = galaxyRadius * 0.75 + gaussianRandom(0, 30); 
+            } else {
+                r = bulgeRadius + Math.sqrt(Math.random()) * (galaxyRadius - bulgeRadius); 
+            }
+            
+            theta=Math.random()*2*Math.PI; 
+            if(preset.type === "spiral" && Math.random() < 0.2) { 
+                const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); 
+                const arm = Math.floor(Math.random() * preset.armCount); 
+                theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.4 / preset.armCount); 
+            } 
+            z=gaussianRandom(0,preset.thickness); 
+        }
+        const x=r*Math.cos(theta),y=r*Math.sin(theta),dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
+        
+        const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
+        const a_sph_r = (G * (getDarkMatterMass(dist) + centralBHMass + m_bulge_enc)) / (dist*dist);
+        
+        const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y));
+        const MN_a = 200.0; const MN_b = 20.0;
+        const a_MN_r = (G * totalDiskMass * r_cyl) / Math.pow(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(z*z + MN_b*MN_b), 2), 1.5);
+        
+        const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
+        const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
+
+        const starVx = -v*y/r_cyl + gaussianRandom(0, v * 0.05), starVy =  v*x/r_cyl + gaussianRandom(0, v * 0.05), starVz = gaussianRandom(0,v*0.1);
+        
+        const massVar=starMass*(0.5+Math.random());
+        const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+        const lifetimeMultiplier = 0.8 + 0.2 * Math.min(1.0, initialZ);
+        const tempMultiplier = 1.2 - 0.2 * Math.min(1.0, initialZ);
+        
+        const lifetimeInSteps = ((BASE_LIFETIME_YEARS / Math.pow(massVar / starMass, 2.5)) / yearsPerStep) * lifetimeMultiplier;
+        const maxAgeSteps = Math.min(lifetimeInSteps, stageMaxAgeYears / yearsPerStep);
+        const initialAge = Math.random() * maxAgeSteps;
+        const baseTemp = (3000 + (massVar/1.5) * 27000) * tempMultiplier;
+        const currentTemp = Math.max(3000, baseTemp * (1 - initialAge / lifetimeInSteps));
+
+        stars.push({x:x,y:y,z:z,vx:starVx,vy:starVy,vz:starVz, ax:0, ay:0, az:0, mass:massVar,initialMass:massVar,size:0.5+Math.random(),trail:new Float32Array(MAX_TRAIL_LENGTH*3),trailIdx:0,trailCount:0,age:initialAge,lifetime:lifetimeInSteps,temperature:currentTemp, metallicity: initialZ});
+      }
+      
+      for(let i=0;i<gasCloudCount;i++){
+        let r, theta, z = gaussianRandom(0,preset.thickness);
+        
+        if (presetId === "ring") {
+            r = galaxyRadius * 0.75 + gaussianRandom(0, 30); 
+        } else {
+            r = Math.random() * galaxyRadius;
+        }
+
+        theta=Math.random()*2*Math.PI;
+        if(preset.type === "spiral" && Math.random() < 0.5) { 
+            const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); 
+            const arm = Math.floor(Math.random() * preset.armCount); 
+            theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.3 / preset.armCount); 
+        }
+        
+        const x=r*Math.cos(theta),y=r*Math.sin(theta),dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
+        
+        const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
+        const a_sph_r = (G * (getDarkMatterMass(dist) + centralBHMass + m_bulge_enc)) / (dist*dist);
+        
+        const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y));
+        const MN_a = 200.0; const MN_b = 20.0;
+        const a_MN_r = (G * totalDiskMass * r_cyl) / Math.pow(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(z*z + MN_b*MN_b), 2), 1.5);
+        
+        const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
+        const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
+
+        const gasVx = -v*y/r_cyl + gaussianRandom(0, v * 0.05), gasVy = v*x/r_cyl + gaussianRandom(0, v * 0.05), gasVz = gaussianRandom(0,v*0.1);
+        const mass=stageParams.avgGasMass*(0.5+Math.random());
+        const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+        gasClouds.push({x:x,y:y,z:z,vx:gasVx,vy:gasVy,vz:gasVz, ax:0, ay:0, az:0, mass, heat: 10 + Math.random()*20, size:k*Math.pow(mass,1/3), galaxyIndex:0, starsCreated:0, spawnCountThisSecond:0, metallicity: initialZ});
+      }
+
+      if(enableClusters){
+          const num=Math.floor(actualStarCount*0.05);
+          for(let i=0;i<num;i++){
+              let r, theta, z = gaussianRandom(0,preset.thickness);
+              
+              if (presetId === "ring") {
+                  r = galaxyRadius * 0.75 + gaussianRandom(0, 30); 
+              } else {
+                  r = bulgeRadius+Math.random()*(galaxyRadius-bulgeRadius);
+              }
+              theta=Math.random()*2*Math.PI;
+
+              const x_pos=r*Math.cos(theta),y_pos=r*Math.sin(theta),dist=Math.max(0.1, Math.sqrt(r*r+z*z));
+              
+              const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
+              const a_sph_r = (G * (getDarkMatterMass(dist) + centralBHMass + m_bulge_enc)) / (dist*dist);
+              const r_cyl = Math.max(0.1, Math.sqrt(x_pos*x_pos + y_pos*y_pos));
+              const MN_a = 200.0; const MN_b = 20.0;
+              const a_MN_r = (G * totalDiskMass * r_cyl) / Math.pow(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(z*z + MN_b*MN_b), 2), 1.5);
+              const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
+              const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
+              
+              const massVar=starMass*(2+Math.random()*3);
+              const initialZ = 0.01; 
+              const lifetimeMultiplier = 0.8 + 0.2 * Math.min(1.0, initialZ);
+              const tempMultiplier = 1.2 - 0.2 * Math.min(1.0, initialZ);
+
+              const lifetimeInSteps = ((BASE_LIFETIME_YEARS / Math.pow(massVar / starMass, 2.5)) / yearsPerStep) * lifetimeMultiplier;
+              const maxAgeSteps = Math.min(lifetimeInSteps, stageMaxAgeYears / yearsPerStep);
+              const initialAge = Math.random() * maxAgeSteps;
+              const currentTemp = Math.max(3000, (6000 * tempMultiplier) * (1 - initialAge / lifetimeInSteps));
+
+              stars.push({x:x_pos,y:y_pos,z:z,vx:-v*y_pos/r_cyl,vy:v*x_pos/r_cyl,vz:gaussianRandom(0,v*0.1), ax:0, ay:0, az:0, mass:massVar,initialMass:massVar,size:2+Math.random()*3,trail:new Float32Array(MAX_TRAIL_LENGTH*3),trailIdx:0,trailCount:0,age:initialAge,lifetime:lifetimeInSteps,temperature:currentTemp,isCluster:true, metallicity: initialZ});
+          }
+      }
+      elapsedTime=0;snapshots=[];updateSnapshotDisplay();
+      
+      computeAccelerations([...blackHoles, ...stars, ...gasClouds]);
+    }
+    
+    timeWarpBtn.addEventListener('click', () => {
+        updatePhysics(100);
+    });
+
+    directorModeBtn.addEventListener('click', () => {
+        isDirectorMode = !isDirectorMode;
+        directorModeBtn.textContent = isDirectorMode ? "Stop Director Mode" : "Toggle Director Mode";
+        
+        if (isDirectorMode && selectedStars.length === 1) {
+            trackingTarget = selectedStars[0];
+        } else {
+            trackingTarget = null;
+        }
+    });
+
+    clearTargetsBtn.addEventListener('click', () => {
+        selectedStars = [];
+        hoveredStar = null;
+    });
+
+    chaseZoomSlider.addEventListener('input', () => {
+        chaseCamZoomTarget = parseFloat(chaseZoomSlider.value);
+        chaseZoomValue.textContent = chaseCamZoomTarget.toFixed(1) + 'x';
+    });
+
+    gasBrightnessSlider.addEventListener('input', () => {
+        const val = parseFloat(gasBrightnessSlider.value);
+        gasBrightnessValue.textContent = (val > 0 ? '+' : '') + val;
+        gasVisualMult = Math.max(0, 2.0 + (val * 2.0)); 
+    });
+
+    starScaleSlider.addEventListener('input', () => {
+        const val = parseFloat(starScaleSlider.value);
+        starScaleValue.textContent = (val > 0 ? '+' : '') + val;
+        starVisualMult = Math.max(0, 2.0 + (val * 2.0)); 
+    });
+    
+    speedSlider.addEventListener('input',()=>{physicsSteps=Math.floor(speedSlider.value*2);speedValue.textContent=`${speedSlider.value}x`;});
+    massSlider.addEventListener('input',()=>{massValue.textContent=massSlider.value;}); 
+    
+    starCountSlider.addEventListener('input', () => {
+        const stage = galaxyStageSelect.value;
+        const starPct = {new: 0.15, adult: 0.70, dying: 0.95}[stage];
+        const actual = Math.floor(parseInt(starCountSlider.value) * starPct);
+        const starCapacityControl = document.getElementById('starCountValue');
+        if (starCapacityControl) starCapacityControl.textContent = `${actual} / ${starCountSlider.value}`;
+    });
+    
+    gasAmountSlider.addEventListener('input', () => { 
+        const gasAmountControl = document.getElementById('gasAmountValue');
+        if (gasAmountControl) gasAmountControl.textContent = `${(parseFloat(gasAmountSlider.value) * 100).toFixed(0)}%`; 
+    });
+    restartButton.addEventListener('click',initSimulation); galaxyStageSelect.addEventListener('change', initSimulation); galaxyTypePresetSelect.addEventListener('change', initSimulation);
+    starCountSlider.addEventListener('mouseup',initSimulation); gasAmountSlider.addEventListener('mouseup', initSimulation);
+    takeScreenshotButton.addEventListener('click', () => takeCustomScreenshot(false));
+    
+    pauseSimButton.addEventListener('click', () => { 
+        isPaused = !isPaused; 
+        pauseSimButton.textContent = isPaused ? "Resume Simulation" : "Pause/Resume Simulation"; 
+        glCanvas.style.cursor = isPaused ? "crosshair" : "default";
+        if (!isPaused) {
+            hoveredStar = null;
+            currentMouseX = -1000;
+            currentMouseY = -1000;
+            isPopupCollapsed = true; 
+        } else {
+            isPopupCollapsed = false; 
+        }
+    });
+    
+    glCanvas.addEventListener('wheel',(e)=>{
+        e.preventDefault();
+        const r=glCanvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+        const sF=e.deltaY>0?0.9:1.1,nS=Math.max(0.1,Math.min(30,scale*sF)); // Cap manual zoom raised to 30x
+        translateX=mx-(mx-translateX)*(nS/scale);
+        translateY=my-(my-translateY)*(nS/scale);
+        scale=nS;
+    }, { passive: false });
+
+    glCanvas.addEventListener('mousedown',(e)=>{
+        isCanvasMouseDown = true;
+        
+        if (isDirectorMode) {
+            isDirectorMode = false;
+            directorModeBtn.textContent = "Toggle Director Mode";
+            trackingTarget = null;
+        }
+        
+        dragStartX = e.clientX; 
+        dragStartY = e.clientY;
+        lastX = e.clientX; 
+        lastY = e.clientY; 
+        lastMouseX = e.clientX; 
+        lastMouseY = e.clientY;
+        
+        if (e.button === 0) { 
+            isDragging = false; 
+        } else if (e.button === 2) { 
+            isRotating = false; 
+        }
+    });
+    
+    glCanvas.addEventListener('mousemove', (e) => {
+        const rect = glCanvas.getBoundingClientRect();
+        currentMouseX = e.clientX - rect.left;
+        currentMouseY = e.clientY - rect.top;
+    });
+    
+    window.addEventListener('mousemove',(e)=>{
+        if (!isCanvasMouseDown) return;
+
+        const moved = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
+
+        if ((e.buttons & 1) === 1) { 
+            if (moved > 5) {
+                isDragging = true;
+                translateX += e.clientX - lastX;
+                translateY += e.clientY - lastY;
+            }
+            lastX = e.clientX;
+            lastY = e.clientY;
+        } else if ((e.buttons & 2) === 2) { 
+            if (moved > 5) {
+                isRotating = true;
+                rotationY += (e.clientX - lastMouseX) * 0.5;
+                rotationX = Math.max(-90, Math.min(90, rotationX + (e.clientY - lastMouseY) * 0.5));
+            }
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        }
+    });
+
+    window.addEventListener('mouseup', () => {
+        isCanvasMouseDown = false;
+        isDragging = false;
+        isRotating = false;
+    });
+    
+    glCanvas.addEventListener('click', (e) => {
+        if (!isPaused) return;
+
+        const dragDist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
+        if (dragDist > 5) return; 
+
+        const rect = glCanvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const clickedStar = getStarUnderCursor(mouseX, mouseY, SCANNER_RADIUS);
+
+        if (!clickedStar) return;
+
+        let idx = selectedStars.indexOf(clickedStar);
+        if (idx > -1) {
+            selectedStars.splice(idx, 1);
+        } else {
+            if (selectedStars.length >= 2) {
+                selectedStars.shift();
+            }
+            selectedStars.push(clickedStar);
+        }
+        
+        projectedOrbitPath = [];
+        if (selectedStars.length > 0) {
+            calculateProjectedOrbit(selectedStars[0]);
+        }
+        hoveredStar = clickedStar;
+        isPopupCollapsed = false; 
+    });
+
+    glCanvas.addEventListener('mouseout', () => { currentMouseX = -1000; currentMouseY = -1000; });
+    glCanvas.addEventListener('contextmenu',e=>e.preventDefault());
+    
+    onResize(); initSimulation(); requestAnimationFrame(draw);
+  </script>
 </body>
 </html>
