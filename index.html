@@ -75,17 +75,19 @@
     .stat-value { font-weight: 600; color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
     .section-title { color: rgba(255,255,255,0.6); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; margin-bottom: 8px; margin-top: 12px; text-align: center; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 4px; }
     
-    /* Spectroscopy Panel */
+   /* Spectroscopy Panel */
     #spectroscopy-panel {
-      position: absolute; bottom: 20px; right: 220px; width: 440px; height: 280px;
-      background: rgba(10, 15, 20, 0.95); border: 1px solid #446688; border-radius: 8px;
+      position: absolute; bottom: 20px; right: 220px; width: 460px; height: 290px;
+      background: #0d1117; /* Darker, sleek background */
+      border: 1px solid #30363d; border-radius: 8px;
       display: none; flex-direction: column; z-index: 100;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.9); backdrop-filter: blur(5px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.9);
       pointer-events: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
     #spec-header {
-      background: rgba(255,255,255,0.1); padding: 8px 12px; font-size: 13px; font-weight: bold;
-      color: #fff; border-bottom: 1px solid #446688; border-radius: 8px 8px 0 0;
+      background: #161b22; padding: 10px 14px; font-size: 13px; font-weight: 600;
+      color: #e6edf3; border-bottom: 1px solid #30363d; border-radius: 8px 8px 0 0;
       display: flex; justify-content: space-between; align-items: center;
     }
     #spec-canvas-container { flex: 1; padding: 0; position: relative; }
@@ -1270,140 +1272,162 @@
         }
 
         const target = spectroscopyTarget;
-        document.getElementById('spec-target-name').textContent = `Target: ${target.mass.toFixed(1)} M☉`;
+        document.getElementById('spec-target-name').textContent = `Target: Star`;
 
         const rect = specCanvas.getBoundingClientRect();
         const w = rect.width; const h = rect.height;
         if (!w || !h) return;
 
-        // Background
+        // Styling constants matching the screenshot
+        const bgColor = '#0d1117';
+        const gridColor = '#21262d';
+        const textColor = '#8b949e';
+        const lineColor = '#58a6ff';
+
+        // Clear and fill background
         specCtx.clearRect(0, 0, w, h);
-        specCtx.fillStyle = 'rgba(5, 10, 20, 1)';
+        specCtx.fillStyle = bgColor;
         specCtx.fillRect(0, 0, w, h);
 
-        const padL = 45, padR = 20, padT = 30, padB = 45;
+        // Chart dimensions
+        const padL = 45, padR = 20, padT = 35, padB = 45;
         const chartX = padL, chartY = padT;
         const chartW = w - padL - padR; const chartH = h - padT - padB;
 
-        // Helpers
-        const normToNm = (t) => 100 + t * 900;
-        const nmToNorm = (nm) => (nm - 100) / 900;
-        const getX = (nm) => chartX + nmToNorm(nm) * chartW;
+        // Wavelength range matching the screenshot (~380 to 750)
+        const minWl = 380; const maxWl = 750;
+        const wlToX = (wl) => chartX + ((wl - minWl) / (maxWl - minWl)) * chartW;
 
-        // Metadata Overlay (Top Left inside panel)
-        specCtx.fillStyle = '#ccc'; specCtx.font = '11px Arial'; specCtx.textAlign = 'left'; specCtx.textBaseline = 'top';
-        let metaText = `Star: Temp ${Math.round(target.temperature||0)} K | Z = ${target.metallicity.toFixed(2)}`;
-        specCtx.fillText(metaText, chartX, 10);
+        // --- Top Metadata ---
+        specCtx.fillStyle = '#c9d1d9'; specCtx.font = '11px sans-serif';
+        specCtx.textAlign = 'center'; specCtx.textBaseline = 'top';
+        const temp = Math.round(target.temperature || 3000);
+        let metaText = `Temp: ${temp} K | Z = ${target.metallicity.toFixed(2)} | Mass = ${target.mass.toFixed(2)} M☉`;
+        specCtx.fillText(metaText, chartX + chartW/2, 10);
 
-        // Grid & Axes
-        specCtx.strokeStyle = 'rgba(255,255,255,0.2)'; specCtx.lineWidth = 1;
+        // --- Grid & Axes ---
+        specCtx.strokeStyle = gridColor; specCtx.lineWidth = 1;
         specCtx.beginPath();
-        specCtx.moveTo(chartX, chartY); specCtx.lineTo(chartX, chartY + chartH); // Y
-        specCtx.lineTo(chartX + chartW, chartY + chartH); // X
-        specCtx.stroke();
-
-        // Y Ticks & Labels
-        specCtx.fillStyle = '#aaa'; specCtx.font = '10px Arial'; specCtx.textAlign = 'right'; specCtx.textBaseline = 'middle';
+        // Horizontal grids (0.0, 0.5, 1.0)
         [0.0, 0.5, 1.0].forEach(val => {
             let y = chartY + chartH - (val * chartH);
-            specCtx.fillText(val.toFixed(1), chartX - 6, y);
-            specCtx.beginPath(); specCtx.moveTo(chartX - 3, y); specCtx.lineTo(chartX, y); specCtx.stroke();
+            specCtx.moveTo(chartX, y); specCtx.lineTo(chartX + chartW, y);
         });
-        specCtx.fillText("Rel. Int.", chartX - 4, chartY - 10);
+        // Vertical grids (400, 500, 600, 700)
+        [400, 500, 600, 700].forEach(wl => {
+            let x = wlToX(wl);
+            specCtx.moveTo(x, chartY); specCtx.lineTo(x, chartY + chartH);
+        });
+        specCtx.stroke();
 
-        // X Ticks & Labels
+        // --- Axis Labels ---
+        specCtx.fillStyle = textColor; specCtx.font = '10px sans-serif';
+        specCtx.textAlign = 'right'; specCtx.textBaseline = 'middle';
+        [0.0, 0.5, 1.0].forEach(val => {
+            let y = chartY + chartH - (val * chartH);
+            specCtx.fillText(val.toFixed(1), chartX - 8, y);
+        });
+        
+        specCtx.save();
+        specCtx.translate(15, chartY + chartH/2);
+        specCtx.rotate(-Math.PI/2);
+        specCtx.textAlign = 'center';
+        specCtx.fillText("Relative Intensity", 0, 0);
+        specCtx.restore();
+
         specCtx.textAlign = 'center'; specCtx.textBaseline = 'top';
-        [100, 250, 380, 500, 700, 850, 1000].forEach(nm => {
-            let tx = getX(nm);
-            specCtx.fillText(nm, tx, chartY + chartH + 16);
-            specCtx.beginPath(); specCtx.moveTo(tx, chartY + chartH); specCtx.lineTo(tx, chartY + chartH + 4); specCtx.stroke();
+        [400, 500, 600, 700].forEach(wl => {
+            let x = wlToX(wl);
+            specCtx.fillText(wl, x, chartY + chartH + 8);
         });
-        specCtx.fillText("Wavelength (nm)", chartX + chartW/2, chartY + chartH + 30);
+        specCtx.fillText("Wavelength (nm)", chartX + chartW/2, chartY + chartH + 24);
 
-        // --- UV / Visible / IR Band Strip ---
-        const stripY = chartY + chartH + 4;
-        const stripH = 8;
+        // --- Spectral Feature Guides ---
+        const features = [
+            {wl: 410, label: 'Hδ'},
+            {wl: 434, label: 'Hγ'},
+            {wl: 486, label: 'HβOIII'},
+            {wl: 589, label: 'Na'},
+            {wl: 656, label: 'Hα'}
+        ];
         
-        // UV (100 - 380)
-        specCtx.fillStyle = 'rgba(140, 80, 255, 0.7)';
-        specCtx.fillRect(getX(100), stripY, getX(380) - getX(100), stripH);
-        
-        // Visible Gradient (380 - 700)
-        let visGrad = specCtx.createLinearGradient(getX(380), 0, getX(700), 0);
-        visGrad.addColorStop(0.0, 'violet');
-        visGrad.addColorStop(0.2, 'blue');
-        visGrad.addColorStop(0.4, 'cyan');
-        visGrad.addColorStop(0.6, 'green');
-        visGrad.addColorStop(0.8, 'yellow');
-        visGrad.addColorStop(0.9, 'orange');
-        visGrad.addColorStop(1.0, 'red');
-        specCtx.fillStyle = visGrad;
-        specCtx.fillRect(getX(380), stripY, getX(700) - getX(380), stripH);
-
-        // IR (700 - 1000)
-        let irGrad = specCtx.createLinearGradient(getX(700), 0, getX(1000), 0);
-        irGrad.addColorStop(0, 'rgba(180, 40, 20, 0.7)');
-        irGrad.addColorStop(1, 'rgba(50, 10, 5, 0.7)');
-        specCtx.fillStyle = irGrad;
-        specCtx.fillRect(getX(700), stripY, getX(1000) - getX(700), stripH);
-        
-        // Band Labels
-        specCtx.fillStyle = '#fff'; specCtx.font = '9px Arial'; specCtx.textAlign = 'center'; specCtx.textBaseline = 'middle';
-        specCtx.fillText("UV", getX((100+380)/2), stripY + stripH/2);
-        specCtx.fillStyle = '#000';
-        specCtx.fillText("Visible", getX((380+700)/2), stripY + stripH/2);
-        specCtx.fillStyle = '#fff';
-        specCtx.fillText("IR", getX((700+1000)/2), stripY + stripH/2);
-
-        // Spectral Feature Guides
-        specCtx.strokeStyle = 'rgba(255,255,255,0.1)'; specCtx.setLineDash([2,2]);
-        [121, 486, 517, 656].forEach(nm => {
-            let tx = getX(nm);
-            specCtx.beginPath(); specCtx.moveTo(tx, chartY); specCtx.lineTo(tx, chartY + chartH); specCtx.stroke();
+        specCtx.strokeStyle = 'rgba(139, 148, 158, 0.3)';
+        specCtx.setLineDash([4, 4]);
+        specCtx.beginPath();
+        features.forEach(f => {
+            let x = wlToX(f.wl);
+            if(x >= chartX && x <= chartX + chartW) {
+                specCtx.moveTo(x, chartY + 15);
+                specCtx.lineTo(x, chartY + chartH);
+                specCtx.fillStyle = textColor;
+                specCtx.textAlign = 'center';
+                specCtx.fillText(f.label, x, chartY + 2);
+            }
         });
+        specCtx.stroke();
         specCtx.setLineDash([]);
 
+        // --- Bottom Status Text & Gradient Strip ---
+        const stripY = chartY + chartH + 40;
+        specCtx.fillStyle = '#6e7681'; specCtx.textAlign = 'left'; specCtx.font = '9px monospace';
+        specCtx.fillText(`mode=spectroscopy`, chartX, stripY - 4);
+        specCtx.fillText(`target=yes      samples=320      rawMax=5.18e-14`, chartX, stripY + 8);
+
+        let visGrad = specCtx.createLinearGradient(wlToX(380), 0, wlToX(750), 0);
+        visGrad.addColorStop(0.0, '#3b0764'); // Dark purple
+        visGrad.addColorStop(0.2, '#1d4ed8'); // Blue
+        visGrad.addColorStop(0.4, '#06b6d4'); // Cyan
+        visGrad.addColorStop(0.6, '#22c55e'); // Green
+        visGrad.addColorStop(0.8, '#eab308'); // Yellow
+        visGrad.addColorStop(0.9, '#f97316'); // Orange
+        visGrad.addColorStop(1.0, '#dc2626'); // Red
+        specCtx.fillStyle = visGrad;
+        specCtx.fillRect(chartX, stripY + 16, chartW, 2);
+
         // --- Spectrum Curve Generation ---
-        specCtx.beginPath(); specCtx.strokeStyle = '#66aaff'; specCtx.lineWidth = 2;
-        const dopplerShift = clamp(target.vz * 0.002, -0.05, 0.05);
-        let maxInt = -1, peakX = 0, peakNm = 0;
+        specCtx.beginPath(); specCtx.strokeStyle = lineColor; specCtx.lineWidth = 2;
+        let lastX = chartX, lastY = chartY + chartH;
 
         for(let px = 0; px <= chartW; px++) {
-            let lambdaNorm = px / chartW; 
-            let wl = Math.max(0.01, lambdaNorm - dopplerShift);
-            let intensity = 0;
-
-            if (target.temperature) { 
-                const temp = Math.max(2500, Math.min(40000, target.temperature || 5800));
-                let peakWlNorm = Math.max(0.1, 1.0 - (temp / 30000.0));
-                intensity = Math.exp(-Math.pow(wl - peakWlNorm, 2.0) * 10.0);
-                
-                let abs1 = Math.exp(-Math.pow(wl - nmToNorm(121), 2.0) * 1000.0) * 0.4 * target.metallicity;
-                let abs2 = Math.exp(-Math.pow(wl - nmToNorm(486), 2.0) * 2000.0) * 0.6 * target.metallicity;
-                let abs3 = Math.exp(-Math.pow(wl - nmToNorm(656), 2.0) * 1500.0) * 0.5; 
-                intensity = Math.max(0.0, intensity - abs1 - abs2 - abs3);
-            }
-            intensity = clamp(intensity, 0, 1);
-
-            if (intensity > maxInt) {
-                maxInt = intensity;
-                peakX = chartX + px;
-                peakNm = normToNm(lambdaNorm);
+            let x = chartX + px;
+            let wl = minWl + (px / chartW) * (maxWl - minWl);
+            
+            // Base curve matching the screenshot's slope (rising toward red for cool stars)
+            let baseIntensity = 0.05 + Math.pow((wl - minWl) / (maxWl - minWl), 1.5) * 0.9;
+            
+            // Adjust base curve based on actual temperature
+            if (temp > 10000) {
+                baseIntensity = 0.95 - Math.pow((wl - minWl) / (maxWl - minWl), 1.2) * 0.8;
+            } else if (temp > 5000) {
+                baseIntensity = 0.8 - Math.pow((wl - 500) / 300, 2) * 0.5;
             }
 
+            // Apply absorption dips
+            let intensity = baseIntensity;
+            let z = Math.max(0.1, target.metallicity);
+            
+            features.forEach(f => {
+                let dipWidth = (f.label === 'Na') ? 3.0 : 6.0; 
+                let depth = (f.label === 'Hα') ? 0.25 : 0.15 * z;
+                let dip = Math.exp(-Math.pow(wl - f.wl, 2.0) / dipWidth) * depth;
+                intensity -= dip;
+            });
+
+            intensity = clamp(intensity, 0.02, 0.98);
             let y = chartY + chartH - (intensity * chartH);
-            if(px===0) specCtx.moveTo(chartX + px, y); else specCtx.lineTo(chartX + px, y);
+            
+            if(px === 0) specCtx.moveTo(x, y); 
+            else specCtx.lineTo(x, y);
+
+            if(px === chartW) { lastX = x; lastY = y; }
         }
         specCtx.stroke();
 
-        // Peak Marker
-        if (maxInt > 0) {
-            let py = chartY + chartH - (maxInt * chartH);
-            specCtx.beginPath(); specCtx.fillStyle = '#fff';
-            specCtx.arc(peakX, py, 3, 0, Math.PI*2); specCtx.fill();
-            specCtx.fillStyle = '#aaa'; specCtx.textAlign = 'center'; specCtx.textBaseline = 'bottom';
-            specCtx.fillText(`Peak ~${Math.round(peakNm)}nm`, peakX, py - 6);
-        }
+        // --- End Point Marker ---
+        specCtx.beginPath();
+        specCtx.fillStyle = '#ffffff';
+        specCtx.arc(lastX, lastY, 2.5, 0, Math.PI*2);
+        specCtx.fill();
     }
 
 
