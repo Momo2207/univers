@@ -1264,7 +1264,7 @@
         return {r, g, b, a, size: cSize};
     }
 
-    function drawSpectroscopyPanel() {
+   function drawSpectroscopyPanel() {
         if (currentModeId !== 'spectroscopy') return;
         if (!spectroscopyTarget || !stars.includes(spectroscopyTarget)) {
             if (spectroscopyTarget) { spectroscopyTarget = null; refreshAnalysisUI(); }
@@ -1278,6 +1278,15 @@
         const w = rect.width; const h = rect.height;
         if (!w || !h) return;
 
+        // 1. DYNAMIC RESIZE FIX: Forces the canvas buffer to match the CSS layout 
+        // the moment the panel is un-hidden, preventing stretching and clipping.
+        const dpr = window.devicePixelRatio || 1;
+        if (specCanvas.width !== Math.floor(w * dpr) || specCanvas.height !== Math.floor(h * dpr)) {
+            specCanvas.width = Math.floor(w * dpr);
+            specCanvas.height = Math.floor(h * dpr);
+            specCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
         // Styling constants matching the screenshot
         const bgColor = '#0d1117';
         const gridColor = '#21262d';
@@ -1289,8 +1298,8 @@
         specCtx.fillStyle = bgColor;
         specCtx.fillRect(0, 0, w, h);
 
-        // Chart dimensions
-        const padL = 45, padR = 20, padT = 35, padB = 45;
+        // Chart dimensions (Increased padB to 65 so the footer and strip fit nicely)
+        const padL = 45, padR = 20, padT = 30, padB = 65;
         const chartX = padL, chartY = padT;
         const chartW = w - padL - padR; const chartH = h - padT - padB;
 
@@ -1308,12 +1317,12 @@
         // --- Grid & Axes ---
         specCtx.strokeStyle = gridColor; specCtx.lineWidth = 1;
         specCtx.beginPath();
-        // Horizontal grids (0.0, 0.5, 1.0)
+        // Horizontal grids
         [0.0, 0.5, 1.0].forEach(val => {
             let y = chartY + chartH - (val * chartH);
             specCtx.moveTo(chartX, y); specCtx.lineTo(chartX + chartW, y);
         });
-        // Vertical grids (400, 500, 600, 700)
+        // Vertical grids
         [400, 500, 600, 700].forEach(wl => {
             let x = wlToX(wl);
             specCtx.moveTo(x, chartY); specCtx.lineTo(x, chartY + chartH);
@@ -1368,21 +1377,21 @@
         specCtx.setLineDash([]);
 
         // --- Bottom Status Text & Gradient Strip ---
-        const stripY = chartY + chartH + 40;
+        const footerY = chartY + chartH + 40;
         specCtx.fillStyle = '#6e7681'; specCtx.textAlign = 'left'; specCtx.font = '9px monospace';
-        specCtx.fillText(`mode=spectroscopy`, chartX, stripY - 4);
-        specCtx.fillText(`target=yes      samples=320      rawMax=5.18e-14`, chartX, stripY + 8);
+        specCtx.fillText(`mode=spectroscopy`, chartX, footerY);
+        specCtx.fillText(`target=yes      samples=320      rawMax=5.18e-14`, chartX, footerY + 12);
 
         let visGrad = specCtx.createLinearGradient(wlToX(380), 0, wlToX(750), 0);
-        visGrad.addColorStop(0.0, '#3b0764'); // Dark purple
-        visGrad.addColorStop(0.2, '#1d4ed8'); // Blue
-        visGrad.addColorStop(0.4, '#06b6d4'); // Cyan
-        visGrad.addColorStop(0.6, '#22c55e'); // Green
-        visGrad.addColorStop(0.8, '#eab308'); // Yellow
-        visGrad.addColorStop(0.9, '#f97316'); // Orange
-        visGrad.addColorStop(1.0, '#dc2626'); // Red
+        visGrad.addColorStop(0.0, '#3b0764');
+        visGrad.addColorStop(0.2, '#1d4ed8');
+        visGrad.addColorStop(0.4, '#06b6d4');
+        visGrad.addColorStop(0.6, '#22c55e');
+        visGrad.addColorStop(0.8, '#eab308');
+        visGrad.addColorStop(0.9, '#f97316');
+        visGrad.addColorStop(1.0, '#dc2626');
         specCtx.fillStyle = visGrad;
-        specCtx.fillRect(chartX, stripY + 16, chartW, 2);
+        specCtx.fillRect(chartX, footerY + 20, chartW, 2);
 
         // --- Spectrum Curve Generation ---
         specCtx.beginPath(); specCtx.strokeStyle = lineColor; specCtx.lineWidth = 2;
@@ -1392,17 +1401,14 @@
             let x = chartX + px;
             let wl = minWl + (px / chartW) * (maxWl - minWl);
             
-            // Base curve matching the screenshot's slope (rising toward red for cool stars)
             let baseIntensity = 0.05 + Math.pow((wl - minWl) / (maxWl - minWl), 1.5) * 0.9;
             
-            // Adjust base curve based on actual temperature
             if (temp > 10000) {
                 baseIntensity = 0.95 - Math.pow((wl - minWl) / (maxWl - minWl), 1.2) * 0.8;
             } else if (temp > 5000) {
                 baseIntensity = 0.8 - Math.pow((wl - 500) / 300, 2) * 0.5;
             }
 
-            // Apply absorption dips
             let intensity = baseIntensity;
             let z = Math.max(0.1, target.metallicity);
             
@@ -1429,7 +1435,6 @@
         specCtx.arc(lastX, lastY, 2.5, 0, Math.PI*2);
         specCtx.fill();
     }
-
 
     function draw() {
       if (isDirectorMode && !isPaused) {
