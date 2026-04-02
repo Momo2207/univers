@@ -62,7 +62,7 @@
       font-size: 13px; z-index: 100;
       box-shadow: 0 10px 30px rgba(0,0,0,0.9), inset 0 0 15px rgba(100, 180, 255, 0.05);
       backdrop-filter: blur(8px); min-width: 240px; font-family: "Segoe UI", Roboto, Helvetica, sans-serif;
-      pointer-events: none;
+      pointer-events: auto;
     }
     .popup-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(100, 180, 255, 0.2); padding-bottom: 8px; margin-bottom: 12px; cursor: pointer; user-select: none; }
     .popup-header:hover { background: rgba(255,255,255,0.05); border-radius: 4px; }
@@ -109,6 +109,7 @@
     .btn-clear { background: #b71c1c; border-color: #d32f2f; margin-top: 5px;} .btn-clear:hover { background: #e53935; }
     .btn-director { background: #00838f; border-color: #006064; } .btn-director:hover { background: #00acc1; }
     .btn-sci { background: #2e7d32; border-color: #1b5e20; } .btn-sci:hover { background: #388e3c; }
+    .btn-record { background: #d84315; border-color: #c62828; } .btn-record:hover { background: #e64a19; }
     .checkbox-label { margin: 6px 0; font-size: 12px; display: flex; align-items: center; color: #ccc; }
     .checkbox-label input { margin-right: 8px; }
     .status-badge { animation: blink 1.5s infinite; }
@@ -216,12 +217,17 @@
     <div class="control-group">
       <div class="group-header">Visual Overrides <span class="group-toggle">+</span></div>
       <div class="group-content collapsed">
-        <label for="gasBrightness">Gas Appearance (-1 to 1): <span id="gasBrightnessValue">0</span></label>
-        <input type="range" id="gasBrightness" min="-1" max="1" step="0.1" value="0">
-        <label for="starScale">Star Size (-1 to 1): <span id="starScaleValue">0</span></label>
-        <input type="range" id="starScale" min="-1" max="1" step="0.1" value="0">
+        <label for="hotGasBrightness">Hot Gas Appearance (-1 to 3): <span id="hotGasBrightnessValue">0</span></label>
+        <input type="range" id="hotGasBrightness" min="-1" max="3" step="0.1" value="0">
+        
+        <label for="coldGasBrightness">Cold Gas Appearance (-1 to 3): <span id="coldGasBrightnessValue">0</span></label>
+        <input type="range" id="coldGasBrightness" min="-1" max="3" step="0.1" value="0">
+        
+        <label for="starScale">Star Size (-1 to 3): <span id="starScaleValue">0</span></label>
+        <input type="range" id="starScale" min="-1" max="3" step="0.1" value="0">
         
         <div style="margin-top:15px; border-top:1px solid #333; padding-top:10px;">
+          <label class="checkbox-label"><input type="checkbox" id="tglHDR" checked> HDR "Sunglasses" (Prevent Blowout)</label>
           <label class="checkbox-label"><input type="checkbox" id="realisticColors" checked> Authentic Colors</label>
           <label class="checkbox-label"><input type="checkbox" id="leapfrogPhysics" checked> Leapfrog Physics</label>
           <label class="checkbox-label"><input type="checkbox" id="showDarkMatter" checked> Show Dark Matter Halo</label>
@@ -265,6 +271,11 @@
                 <option value="100">Every 100 Updates</option>
             </select>
             <div id="autoCaptureStatus" style="font-size:12px; color:#ff6666; font-weight:bold; display:none; margin-top:8px; text-align:center;" class="status-badge">🔴 AUTO-REC ACTIVE</div>
+        </div>
+        
+        <div style="margin-top:15px; border-top:1px solid #333; padding-top:10px;">
+            <button id="recordDataBtn">Start Data Recording</button>
+            <div id="recordStatus" style="font-size:11px; color:#ccc; text-align:center; display:none; margin-top:5px;">Recording... (0 rows)</div>
         </div>
       </div>
     </div>
@@ -406,7 +417,7 @@
     const expVal = document.getElementById('exposureValue');
     let currentExposure = 1.0;
 
-    const tglRealism = document.getElementById('tglRealism'), tglNoise = document.getElementById('tglNoise'), tglDiffraction = document.getElementById('tglDiffraction'), tglBloom = document.getElementById('tglBloom'), tglDust = document.getElementById('tglDust');
+    const tglRealism = document.getElementById('tglRealism'), tglNoise = document.getElementById('tglNoise'), tglDiffraction = document.getElementById('tglDiffraction'), tglBloom = document.getElementById('tglBloom'), tglDust = document.getElementById('tglDust'), tglHDR = document.getElementById('tglHDR');
 
     uiModeSelect.addEventListener('change', (e) => { 
         currentModeId = e.target.value; 
@@ -433,6 +444,20 @@
     let showDarkMatter=true,enableClusters=true,showJets=true,showGrid=true,showStreaks=true;
     let useRealisticColors = true, useLeapfrog = true;
 
+    // --- DATA LOGGING VARIABLES ---
+    let isDataRecording = false;
+    let dataRecordBuffer = [];
+    const MAX_RECORD_ROWS = 5000;
+    let dataRecordPart = 1;
+    const CSV_HEADERS = [
+        "Time (Myr)", "Stability Index", "Total Energy", "Kinetic Energy", "Potential Energy", 
+        "Central BH Mass", "Star Count", "Gas Cloud Count", "Total Star Mass", "Total Gas Mass", 
+        "Current SFR", "Star Met. Gradient", "Gas Met. Gradient",
+        "RotCurve_Radii", "RotCurve_ModelTotal", "RotCurve_Baryonic", "RotCurve_DarkMatter", "RotCurve_ObsStars", "RotCurve_ObsGas",
+        "SFR_History_Time", "SFR_History_Mass",
+        "MetGrad_Radii", "MetGrad_Stars", "MetGrad_Gas"
+    ];
+
     let centerX,centerY,centerZ=0,totalSizePc=5000,pcPerPixel;
     const G=0.008; let bulgeRadius=250, bulgeMass=500, galaxyRadius=550; let centralBHMass=50;
     let totalDiskMass = 0, totalGasMassCached = 0; 
@@ -453,6 +478,13 @@
     let dragStartX = 0, dragStartY = 0;
     let currentMouseX = -1000, currentMouseY = -1000;
     let isPopupCollapsed = false; let isOrthographicRender = false; let isCanvasMouseDown = false; const SCANNER_RADIUS = 30; 
+
+    // Global listener to toggle the star info popup via the +/- button
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('popup-toggle') || e.target.closest('.popup-header')) {
+            isPopupCollapsed = !isPopupCollapsed;
+        }
+    });
 
     const GALAXY_PRESETS = {
         "ring": { name: "Ring Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.5, armCount: 0, armFraction: 0, gasConcentration: 0.8, thickness: 20 },
@@ -475,12 +507,21 @@
     const directorModeBtn = document.getElementById('directorModeBtn');
     const chaseZoomSlider = document.getElementById('chaseZoomSlider');
     const chaseZoomValue = document.getElementById('chaseZoomValue');
-    const gasBrightnessSlider = document.getElementById('gasBrightness');
-    const gasBrightnessValue = document.getElementById('gasBrightnessValue');
+    
+    const hotGasBrightnessSlider = document.getElementById('hotGasBrightness');
+    const hotGasBrightnessValue = document.getElementById('hotGasBrightnessValue');
+    const coldGasBrightnessSlider = document.getElementById('coldGasBrightness');
+    const coldGasBrightnessValue = document.getElementById('coldGasBrightnessValue');
+    
+    let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let starVisualMult = 2.0;
+    
+    hotGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(hotGasBrightnessSlider.value); hotGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; hotGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
+    coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
+
     const starScaleSlider = document.getElementById('starScale');
     const starScaleValue = document.getElementById('starScaleValue');
+    starScaleSlider.addEventListener('input', () => { const val = parseFloat(starScaleSlider.value); starScaleValue.textContent = (val > 0 ? '+' : '') + val; starVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
     
-    let gasVisualMult = 2.0; let starVisualMult = 2.0;
     let captureScreenshotRequest = { pending: false, auto: false, mult: 1, label: "" };
     let highResMult = 1.0; let screenshotQueue = []; let isProcessingScreenshots = false;
 
@@ -511,7 +552,7 @@
     
     const fsSource=`
       precision mediump float; varying vec4 vColor; varying float vType; varying float vPitch; 
-      uniform float uExposure; uniform float uTime;
+      uniform float uExposure; uniform float uTime; uniform float uHDR;
       uniform float uPSFCore; uniform float uPSFHalo; 
       uniform float uBloom; uniform float uDiffraction; uniform float uSparse;
       uniform float uGain; uniform float uShoulder;
@@ -562,8 +603,16 @@
                 finalRGB += finalRGB * (excess * uBloom * exp(-d*d*10.0));
             }
         }
-        finalRGB = finalRGB / (finalRGB + vec3(uShoulder));
+        
+        if (uHDR < 0.5) {
+            finalRGB = finalRGB / (finalRGB + vec3(uShoulder));
+        } else {
+            finalRGB = clamp(finalRGB, 0.0, 1.0);
+        }
+        
         finalRGB = pow(finalRGB, vec3(1.0/2.2));
+        finalRGB *= finalAlpha; 
+        
         gl_FragColor = vec4(finalRGB, finalAlpha);
       }`;
 
@@ -574,7 +623,7 @@
     const uTranslateLoc=gl.getUniformLocation(program,'uTranslate'), uScaleLoc=gl.getUniformLocation(program,'uScale'), uCanvasSizeLoc=gl.getUniformLocation(program,'uCanvasSize');
     const uRotXLoc=gl.getUniformLocation(program,'uRotX'), uRotYLoc=gl.getUniformLocation(program,'uRotY'), uIs3DLoc=gl.getUniformLocation(program,'uIs3D');
     const uExposureLoc=gl.getUniformLocation(program,'uExposure'), uIsOrthoLoc=gl.getUniformLocation(program,'uIsOrtho');
-    const uTimeLoc=gl.getUniformLocation(program,'uTime');
+    const uTimeLoc=gl.getUniformLocation(program,'uTime'), uHDRLoc=gl.getUniformLocation(program,'uHDR');
     const uPSFCoreLoc=gl.getUniformLocation(program,'uPSFCore'), uPSFHaloLoc=gl.getUniformLocation(program,'uPSFHalo');
     const uBloomLoc=gl.getUniformLocation(program,'uBloom'), uDiffractionLoc=gl.getUniformLocation(program,'uDiffraction');
     const uSparseLoc=gl.getUniformLocation(program,'uSparse'), uGainLoc=gl.getUniformLocation(program,'uGain'), uShoulderLoc=gl.getUniformLocation(program,'uShoulder');
@@ -588,6 +637,46 @@
       resizeSpecCanvas();
       updateSciencePanels(true);
     }
+
+    // --- DATA LOGGING FUNCTIONS ---
+    function flushDataRecordBuffer(isFinal = false) {
+        if (dataRecordBuffer.length === 0) return;
+        
+        let csvContent = CSV_HEADERS.join(",") + "\n" + dataRecordBuffer.join("\n");
+        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        let url = URL.createObjectURL(blob);
+        
+        let link = document.createElement("a");
+        link.setAttribute("href", url);
+        let suffix = (isFinal && dataRecordPart === 1) ? "" : `_part${dataRecordPart}`;
+        link.setAttribute("download", `galaxy_simulation_data${suffix}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        dataRecordBuffer = [];
+        if (!isFinal) dataRecordPart++;
+    }
+
+    document.getElementById('recordDataBtn').addEventListener('click', (e) => {
+        isDataRecording = !isDataRecording;
+        const btn = e.target;
+        const status = document.getElementById('recordStatus');
+        
+        if (isDataRecording) {
+            btn.textContent = "Stop Data Recording";
+            btn.classList.add("btn-record");
+            dataRecordBuffer = [];
+            dataRecordPart = 1;
+            status.style.display = "block";
+            status.textContent = `Recording... (0 rows)`;
+        } else {
+            btn.textContent = "Start Data Recording";
+            btn.classList.remove("btn-record");
+            status.style.display = "none";
+            flushDataRecordBuffer(true);
+        }
+    });
 
     // --- PHYSICS HELPERS ---
     function getDarkMatterMass(r){ const preset=GALAXY_PRESETS[galaxyTypePresetSelect.value]; const x=r/rs; if(x===0) return 0; return 4*Math.PI*(rho0*preset.HALO_DENSITY_SCALE)*rs*rs*rs*(Math.log(1+x)-x/(1+x)); }
@@ -947,6 +1036,36 @@
 
         for(const bh of blackHoles) { bh.massAccretedThisFrame = 0; bh.accretionGlow *= 0.95; }
 
+        // --- STOCHASTIC CLOUD MERGERS (FUZZY COLLISIONS) ---
+        let collisionChecks = Math.floor(gasClouds.length * 0.05); 
+        for (let c = 0; c < collisionChecks; c++) {
+            let i1 = Math.floor(Math.random() * gasClouds.length);
+            let i2 = Math.floor(Math.random() * gasClouds.length);
+            if (i1 === i2) continue;
+            let c1 = gasClouds[i1]; let c2 = gasClouds[i2];
+            if (c1.mass < 0.5 || c2.mass < 0.5) continue; 
+            
+            let dx = c1.x - c2.x, dy = c1.y - c2.y, dz = c1.z - c2.z;
+            let distSq = dx*dx + dy*dy + dz*dz;
+            let mergeRadii = (c1.size + c2.size) * 0.05; 
+            
+            if (distSq < mergeRadii * mergeRadii) {
+                let totalMass = c1.mass + c2.mass;
+                c1.vx = (c1.vx * c1.mass + c2.vx * c2.mass) / totalMass;
+                c1.vy = (c1.vy * c1.mass + c2.vy * c2.mass) / totalMass;
+                c1.vz = (c1.vz * c1.mass + c2.vz * c2.mass) / totalMass;
+                c1.x = (c1.x * c1.mass + c2.x * c2.mass) / totalMass;
+                c1.y = (c1.y * c1.mass + c2.y * c2.mass) / totalMass;
+                c1.z = (c1.z * c1.mass + c2.z * c2.mass) / totalMass;
+                c1.metallicity = (c1.metallicity * c1.mass + c2.metallicity * c2.mass) / totalMass;
+                
+                c1.mass = totalMass;
+                c1.heat = Math.max(c1.heat, c2.heat) + 150; 
+                c2.mass = 0; 
+            }
+        }
+        // ----------------------------------------------------
+
         const allParticles = [...blackHoles, ...stars, ...gasClouds];
         if (useLeapfrog) {
             for(let i=0; i<allParticles.length; i++) {
@@ -976,12 +1095,14 @@
             const accretionRadiusSq = bh.radius * bh.radius;
             const BH_MASS_SCALE = 0.001; 
             for (let i = gasClouds.length - 1; i >= 0; i--) {
-                const cloud = gasClouds[i], dx = cloud.x - bh.x, dy = cloud.y - bh.y, dz = cloud.z - bh.z;
+                const cloud = gasClouds[i];
+                if (cloud.mass < 0.5) continue;
+                let dx = cloud.x - bh.x, dy = cloud.y - bh.y, dz = cloud.z - bh.z;
                 if (dx*dx+dy*dy+dz*dz < accretionRadiusSq && Math.random() < ACCRETION_PROBABILITY) {
                     const scaledCloudMass = cloud.mass * BH_MASS_SCALE;
                     bh.mass += scaledCloudMass; bh.massAccretedThisFrame += scaledCloudMass; 
                     bh.accretionGlow = Math.min(1.0, bh.accretionGlow + 0.5); 
-                    gasClouds.splice(i, 1);
+                    cloud.mass = 0;
                 }
             }
             for (let i = stars.length - 1; i >= 0; i--) {
@@ -994,7 +1115,7 @@
                     stars.splice(i, 1);
                 }
             }
-            bh.radius = Math.max(15.0, baseEventHorizon * bh.mass); 
+            bh.radius = Math.max(4.0, baseEventHorizon * bh.mass); 
             if (frameCount % 10 === 0) { massSlider.value = bh.mass; massValue.textContent = bh.mass.toFixed(1); }
         }
 
@@ -1011,6 +1132,7 @@
             const p = jetParticles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.lifetime -= 1;
             if (p.lifetime <= 0) { jetParticles.splice(i, 1); continue; }
             for (const cloud of gasClouds) {
+                if (cloud.mass < 0.5) continue;
                 const dx = cloud.x - p.x, dy = cloud.y - p.y, dz = cloud.z - p.z, distSq = dx*dx + dy*dy + dz*dz;
                 if (distSq < JET_INTERACTION_RADIUS * JET_INTERACTION_RADIUS) {
                     const dist = Math.max(0.1, Math.sqrt(distSq)), kick = (JET_KICK_FORCE / (dist + 1)) * dt;
@@ -1021,10 +1143,16 @@
         }
 
         for (let i = gasClouds.length - 1; i >= 0; i--) {
-          const cloud = gasClouds[i], stage = galaxyStageSelect.value, stageP = stagePressureParams[stage];
-          const presetType = GALAXY_PRESETS[presetId].type;
+          const cloud = gasClouds[i], presetType = GALAXY_PRESETS[presetId].type;
           
-          cloud.heat = Math.max(5, cloud.heat * (1 - 0.05 * dt)); 
+          if (cloud.mass < 0.5) {
+              gasClouds.splice(i, 1);
+              continue;
+          }
+
+          cloud.mass *= (1.0 - 0.001 * dt); // Prevent sudden poofing, allow extremely long gradual decay
+          cloud.heat = Math.max(5, cloud.heat * (1 - 2.0 * dt)); // Faster cooling so stars can form
+          
           const r_cyl = Math.max(0.1, Math.sqrt(cloud.x*cloud.x + cloud.y*cloud.y));
           
           if (presetType === "spiral") {
@@ -1049,13 +1177,14 @@
           cloud.size = isCold ? k * Math.pow(cloud.mass, 1/3) : k * Math.pow(cloud.mass, 1/3) * (1 + cloud.heat/100);
           cloud.vz *= (1 - 0.05 * dt); 
 
-          const maxStars = stageP.maxNormal;
-          if (isCold && cloud.starsCreated < maxStars) {
-            cloud.spawnCountThisSecond += (1 * dt);
+          if (isCold && cloud.mass > 1.0) {
+            let spawnRate = (cloud.mass / 150.0) * 0.2; // Optimized for 5-8 Gyr visual longevity
+            cloud.spawnCountThisSecond += (spawnRate * dt);
+            
             if (cloud.spawnCountThisSecond >= 1) {
               const newStarCount = Math.floor(cloud.spawnCountThisSecond);
               for (let j = 0; j < newStarCount; j++) {
-                if(cloud.mass <= starMass) break;
+                if(cloud.mass <= 1.0) break;
                 
                 const massVariation = starMass * (0.5 + Math.random());
                 const initialZ = cloud.metallicity;
@@ -1066,13 +1195,13 @@
                 const baseTemp = (3000 + (massVariation / 1.5) * 27000) * tempMultiplier;
                 
                 stars.push({ x: cloud.x+(Math.random()-.5)*cloud.size, y: cloud.y+(Math.random()-.5)*cloud.size, z: cloud.z+(Math.random()-.5)*cloud.size, vx: cloud.vx, vy: cloud.vy, vz: cloud.vz, mass: massVariation, initialMass: massVariation, size: 0.5+Math.random(), trail: new Float32Array(MAX_TRAIL_LENGTH*3), trailIdx:0, trailCount:0, age:0, ageFraction:0, lifetime: lifetimeInSteps, temperature: baseTemp, metallicity: initialZ, ax: cloud.ax, ay: cloud.ay, az: cloud.az });
-                cloud.mass -= starMass; cloud.starsCreated++;
+                cloud.mass -= massVariation; 
+                cloud.starsCreated++;
                 recordStarFormationEvent(massVariation, 1);
               }
               cloud.spawnCountThisSecond -= newStarCount;
             }
           }
-          if (cloud.mass < 0.1 || cloud.starsCreated >= maxStars) gasClouds.splice(i, 1);
         }
 
         for (let i = stars.length - 1; i >= 0; i--) {
@@ -1089,23 +1218,29 @@
                 if (star.initialMass > MASSIVE_STAR_THRESHOLD) {
                     let remnantMass = star.initialMass > 20.0 ? 3.0 + (star.initialMass * 0.1) : 1.4; 
                     let ejectedMass = star.initialMass - remnantMass;
-                    let numFragments = 8; let massPerFragment = ejectedMass / numFragments;
-                    let explosionVelocity = 35; 
+                    
+                    let numFragments = 4; // Fewer, more massive fragments to survive and merge
+                    let massPerFragment = ejectedMass / numFragments;
+                    let explosionVelocity = 25; 
                     
                     remnants.push({ x: star.x, y: star.y, z: star.z, age: 0, lifetime: 50000000 / yearsPerStep, maxRadius: SUPERNOVA_RADIUS * 2.5, shockStrength: 1.0 });
 
                     for (let f = 0; f < numFragments; f++) {
                         let phi = Math.acos(1 - 2 * (f + 0.5) / numFragments); let theta = Math.PI * (1 + Math.sqrt(5)) * (f + 0.5);
                         let dirX = Math.sin(phi) * Math.cos(theta); let dirY = Math.sin(phi) * Math.sin(theta); let dirZ = Math.cos(phi);
+                        
                         gasClouds.push({
                             x: star.x + dirX * 2, y: star.y + dirY * 2, z: star.z + dirZ * 2,
-                            vx: (star.vx * 0.5) + (dirX * explosionVelocity), vy: (star.vy * 0.5) + (dirY * explosionVelocity), vz: (star.vz * 0.5) + (dirZ * explosionVelocity),
+                            vx: star.vx + (dirX * explosionVelocity * 0.3), 
+                            vy: star.vy + (dirY * explosionVelocity * 0.3), 
+                            vz: star.vz + (dirZ * explosionVelocity * 0.3),
                             ax: 0, ay: 0, az: 0, mass: massPerFragment, heat: 5000, size: k * Math.pow(massPerFragment, 1/3) * 1.5,
                             galaxyIndex: 0, starsCreated: 0, spawnCountThisSecond: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT
                         });
                     }
 
                     for (const other of gasClouds) {
+                        if (other.mass < 0.5) continue;
                         const dx = other.x - star.x, dy = other.y - star.y, dz = other.z - star.z; const r2 = dx*dx + dy*dy + dz*dz;
                         if (r2 < SUPERNOVA_RADIUS * SUPERNOVA_RADIUS && r2 > 0) {
                             const r = Math.max(0.1, Math.sqrt(r2)); const force = SUPERNOVA_FORCE / (r2 * 0.1 + 25.0); 
@@ -1189,7 +1324,6 @@
         const parallelSelect = document.getElementById('parallelInstrument');
         const parallelMode = parallelSelect ? parallelSelect.value : "none";
         
-        // Save current camera view & instrument
         const savedState = { rotX: rotationX, rotY: rotationY, ortho: isOrthographicRender, scale: scale, tx: translateX, ty: translateY, mode: currentModeId };
         
         function queueShots(modeStr) {
@@ -1215,15 +1349,12 @@
             }
         }
 
-        // Queue primary instrument
         queueShots(currentModeId);
         
-        // Queue parallel instrument if valid
         if (parallelMode !== "none" && parallelMode !== currentModeId) {
             queueShots(parallelMode);
         }
         
-        // Queue restore operation
         screenshotQueue.push({ restore: true, setup: () => { 
             rotationX = savedState.rotX; rotationY = savedState.rotY; isOrthographicRender = savedState.ortho; 
             scale = savedState.scale; translateX = savedState.tx; translateY = savedState.ty; 
@@ -1250,13 +1381,30 @@
         
         captureScreenshotRequest = { pending: true, mult: nextReq.mult, label: nextReq.label };
     }
-    
-    // --- INSTRUMENT RENDERING LOGIC ---
 
     function getApproxDustDensity(x, y, z) {
         const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y));
         const zDensity = Math.exp(-Math.abs(z) / 25.0);
-        const rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6));
+        const presetId = galaxyTypePresetSelect.value;
+        const preset = GALAXY_PRESETS[presetId];
+        
+        let rDensity = 0;
+        
+        if (presetId === "ring") {
+            const ringRadius = galaxyRadius * 0.75;
+            rDensity = Math.exp(-Math.pow(r_cyl - ringRadius, 2) / 1500.0) * 1.5; 
+        } else if (preset.type === "spiral") {
+            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6));
+            if (r_cyl > 50 && r_cyl < galaxyRadius * 1.2) {
+                const theta = Math.atan2(y, x);
+                const phase = preset.armCount * (theta - patternAngle) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
+                const dustLane = Math.max(0, Math.cos(phase + 1.0));
+                rDensity += dustLane * Math.exp(-r_cyl / galaxyRadius) * 1.2;
+            }
+        } else {
+            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6));
+        }
+
         return Math.max(0, zDensity * rDensity * (totalGasMassCached / 50000.0));
     }
 
@@ -1309,19 +1457,38 @@
 
     function getGasRenderParams(cloud, modeId) {
         let shimmer = 0.8 + Math.sin(frameCount * 0.05 + cloud.x) * 0.2;
-        let baseAlpha = (cloud.heat > 50 ? 0.08 : 0.015) * shimmer * gasVisualMult; 
-        let cSize = cloud.size * gasVisualMult; let r=0.0, g=0.8, b=0.9, a=baseAlpha;
+        
+        let heatRatio = clamp((cloud.heat - 15) / 35, 0.0, 1.0); 
+        let visualMult = coldGasVisualMult * (1.0 - heatRatio) + hotGasVisualMult * heatRatio;
 
-        if (modeId === 'visible') { if (cloud.heat > 50) { r=1.0; g=0.2; b=0.6; a*=1.2; } else { a*=0.5; } } 
-        else if (modeId === 'infrared') { if (cloud.heat < 30) { r=1.0; g=0.4; b=0.0; a = (0.05 + cloud.metallicity*0.1) * shimmer * gasVisualMult; } else { a*=0.2; } } 
-        else if (modeId === 'ultraviolet') { if (cloud.heat > 40) { r=0.5; g=0.0; b=1.0; a*=1.5; } else { a=0.0; } } 
-        else if (modeId === 'xray') { if (cloud.heat > 1000) { r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0); } else { a=0.0; } }
+        let baseAlpha = (cloud.heat > 50 ? 0.03 : 0.04) * shimmer * visualMult; 
+        let cSize = cloud.size * visualMult; 
+        let r=0.0, g=0.8, b=0.9, a=baseAlpha;
+
+        if (modeId === 'visible') { 
+            if (cloud.heat > 50) { r=1.0; g=0.2; b=0.6; a*=0.3; } 
+            else { a*=0.8; } 
+        } 
+        else if (modeId === 'infrared') { 
+            if (cloud.heat < 30) { r=1.0; g=0.4; b=0.0; a = (0.05 + cloud.metallicity*0.1) * shimmer * visualMult; } 
+            else { a*=0.2; } 
+        } 
+        else if (modeId === 'ultraviolet') { 
+            if (cloud.heat > 40) { r=0.5; g=0.0; b=1.0; a*=1.5; } 
+            else { a=0.0; } 
+        } 
+        else if (modeId === 'xray') { 
+            if (cloud.heat > 1000) { r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0); } 
+            else { a=0.0; } 
+        }
         else if (modeId === 'spectroscopy') {
             let z = Math.min(2.0, cloud.metallicity);
-            if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; }
+            if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } 
+            else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } 
+            else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; }
             a *= 0.8; 
         }
-        return {r, g, b, a, size: cSize};
+        return {r, g, b, a, size: cSize, mult: visualMult};
     }
 
     function drawSpectroscopyPanel() {
@@ -1345,7 +1512,6 @@
             specCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
 
-        // Styling constants
         const bgColor = '#0d1117';
         const gridColor = '#21262d';
         const textColor = '#8b949e';
@@ -1521,13 +1687,19 @@
           } else { rotationY += 0.05 * physicsSteps; }
       }
 
-      // TIME FREEZE: Do not advance physics if we are rendering a multi-angle/parallel screenshot queue!
       if(!isPaused && !isCapturingSequence) updatePhysics(physicsSteps);
       
       gl.clearColor(currentMode.bgFloor[0], currentMode.bgFloor[1], currentMode.bgFloor[2], 1.0); 
-      gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE); gl.disable(gl.DEPTH_TEST);
+      gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
       
+      if (tglHDR.checked) {
+          gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR); 
+      } else {
+          gl.blendFunc(gl.ONE, gl.ONE); 
+      }
+
       gl.uniform1f(uExposureLoc, currentExposure); gl.uniform1f(uTimeLoc, frameCount * 0.01);
+      gl.uniform1f(uHDRLoc, tglHDR.checked ? 1.0 : 0.0);
       gl.uniform1f(uPSFCoreLoc, currentMode.psfCore); gl.uniform1f(uPSFHaloLoc, currentMode.psfHalo);
       gl.uniform1f(uBloomLoc, tglBloom.checked ? currentMode.bloomStrength : 0.0); gl.uniform1f(uDiffractionLoc, tglDiffraction.checked ? currentMode.diffraction : 0.0);
       gl.uniform1f(uSparseLoc, currentMode.sparseMode); gl.uniform1f(uGainLoc, currentMode.exposureGain); gl.uniform1f(uShoulderLoc, currentMode.exposureShoulder);
@@ -1566,10 +1738,10 @@
           let rp = getGasRenderParams(cloud, currentModeId);
           if (rp.a > 0) {
               addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.75, 1, rp.r, rp.g, rp.b, rp.a * 0.4);
-              addPoint(cloud.x, cloud.y, cloud.z, 1.4 * gasVisualMult, 5, 0.5, rp.g, 1.0, rp.a * 1.8);
+              addPoint(cloud.x, cloud.y, cloud.z, 1.4 * rp.mult, 5, 0.5, rp.g, 1.0, rp.a * 1.8);
               let rx = Math.sin(cloud.x * 12.3) * (rp.size * 1.2); let ry = Math.cos(cloud.y * 45.6) * (rp.size * 1.2); 
-              addPoint(cloud.x + rx, cloud.y + ry, cloud.z, 1.0 * gasVisualMult, 5, rp.r, rp.g, rp.b, rp.a);
-              addPoint(cloud.x - ry, cloud.y + rx, cloud.z, 1.0 * gasVisualMult, 5, rp.r, rp.g, rp.b, rp.a);
+              addPoint(cloud.x + rx, cloud.y + ry, cloud.z, 1.0 * rp.mult, 5, rp.r, rp.g, rp.b, rp.a);
+              addPoint(cloud.x - ry, cloud.y + rx, cloud.z, 1.0 * rp.mult, 5, rp.r, rp.g, rp.b, rp.a);
           }
       }
 
@@ -1677,7 +1849,7 @@
               }
               if (highResMult === 1 && !isDirectorMode) {
                   const dx = s1.x - s0.x; const dy = s1.y - s0.y; const dz = s1.z - s0.z;
-                  const dvx = s1.vx - s0.vx; const dvy = s1.vy - s0.vy; const dvz = s1.vz - s0.vz;
+                  const dvx = s1.vx - s0.vx; const dvy = s1.vy - s0.vx; const dvz = s1.vz - s0.vz;
                   
                   const distPc = Math.hypot(dx, dy, dz); 
                   const distLy = distPc * 3.262;
@@ -1720,9 +1892,53 @@
       document.getElementById('energy').textContent=`Energy: ${energy.total.toExponential(2)}`;
       document.getElementById('scale').textContent=`Scale: ${(pcPerPixel * glCanvas.width / scale).toFixed(0)} pc`;
       
-      if (frameCount % scienceState.updateEveryFrames === 0 && !isCapturingSequence) updateSciencePanels();
+      if (frameCount % scienceState.updateEveryFrames === 0 && !isCapturingSequence) {
+          updateSciencePanels();
 
-      // --- SCREENSHOT COMPOSITING PROCESSOR ---
+          // --- CONTINUOUS DATA LOGGING UPDATE ---
+          if (isDataRecording) {
+              buildRotationCurveData();
+              buildMetallicityGradientData();
+              
+              let timeMyr = elapsedTime / 1e6;
+              let currentSfr = scienceState.sfr.history.length > 0 ? scienceState.sfr.history[scienceState.sfr.history.length-1].sfrMass : 0;
+              let starGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.starFit.b : 0;
+              let gasGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.gasFit.b : 0;
+              let tStarMass = stars.reduce((sum, s) => sum + s.mass, 0);
+              
+              let rCurv = scienceState.rotationCurve || {radii:[], modelTotal:[], modelBaryon:[], modelDarkMatter:[], starMedian:[], gasMedian:[]};
+              let mGrad = scienceState.metallicityGradient || {radii:[], starZ:[], gasZ:[]};
+              let sHist = scienceState.sfr.history || [];
+
+              let row = [
+                  timeMyr.toFixed(2), stabilityIndex.toFixed(2), lastEnergy.total.toExponential(4), lastEnergy.kinetic.toExponential(4), lastEnergy.potential.toExponential(4),
+                  blackHoles[0] ? blackHoles[0].mass.toFixed(2) : 0, stars.length, gasClouds.length, tStarMass.toFixed(2), totalGasMassCached.toFixed(2),
+                  currentSfr.toFixed(4), starGrad.toFixed(6), gasGrad.toFixed(6),
+                  
+                  `"${JSON.stringify(rCurv.radii)}"`,
+                  `"${JSON.stringify(rCurv.modelTotal)}"`,
+                  `"${JSON.stringify(rCurv.modelBaryon)}"`,
+                  `"${JSON.stringify(rCurv.modelDarkMatter)}"`,
+                  `"${JSON.stringify(rCurv.starMedian)}"`,
+                  `"${JSON.stringify(rCurv.gasMedian)}"`,
+                  
+                  `"${JSON.stringify(sHist.map(h=>h.tMid))}"`,
+                  `"${JSON.stringify(sHist.map(h=>h.sfrMass))}"`,
+                  
+                  `"${JSON.stringify(mGrad.radii)}"`,
+                  `"${JSON.stringify(mGrad.starZ)}"`,
+                  `"${JSON.stringify(mGrad.gasZ)}"`
+              ];
+              
+              dataRecordBuffer.push(row.join(","));
+              document.getElementById('recordStatus').textContent = `Recording... (${dataRecordBuffer.length} rows)`;
+              
+              if (dataRecordBuffer.length >= MAX_RECORD_ROWS) {
+                  flushDataRecordBuffer(false);
+              }
+          }
+      }
+
       if (isProcessingScreenshots) {
           const compCanvas = document.createElement('canvas');
           compCanvas.width = glCanvas.width;
@@ -1733,6 +1949,17 @@
           compCtx.drawImage(overlayCanvas, 0, 0);
           
           const dataURL = compCanvas.toDataURL('image/png');
+          
+          const lbl = captureScreenshotRequest.label || "Snapshot";
+          
+          const downloadLink = document.createElement('a');
+          const safeName = lbl.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          downloadLink.download = `galaxy_${safeName}_${Math.floor(elapsedTime)}.png`;
+          downloadLink.href = dataURL;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+
           const img = document.createElement('img');
           img.src = dataURL;
           
@@ -1741,26 +1968,22 @@
           div.appendChild(img);
           
           const p = document.createElement('p');
-          const lbl = captureScreenshotRequest.label || "Snapshot";
           p.textContent = `${lbl} | Time: ${formatTime(elapsedTime)}` + (highResMult > 1 ? ` (${highResMult}x)` : '');
           div.appendChild(p);
           
           document.getElementById('snapshotList').prepend(div);
           
-          // Revert Canvas Dimensions to normal UI scale
           if (highResMult > 1) {
               highResMult = 1.0;
               onResize(); 
           }
           isProcessingScreenshots = false;
 
-          // Automatically trigger the next screenshot in the queue
           if (screenshotQueue.length > 0) {
               advanceScreenshotQueue();
           }
       }
       
-      // Auto-Capture System Logic
       const autoInterval = parseInt(document.getElementById('autoCaptureInterval').value);
       const statusIndicator = document.getElementById('autoCaptureStatus');
       if (autoInterval > 0 && !isPaused) {
@@ -1858,6 +2081,7 @@
 
         const gasVx = -v*y/r_cyl + gaussianRandom(0, v * 0.05), gasVy = v*x/r_cyl + gaussianRandom(0, v * 0.05), gasVz = gaussianRandom(0,v*0.1);
         const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+
         gasClouds.push({x:x,y:y,z:z,vx:gasVx,vy:gasVy,vz:gasVz, ax:0, ay:0, az:0, mass, heat: 10 + Math.random()*20, size:k*Math.pow(mass,1/3), galaxyIndex:0, starsCreated:0, spawnCountThisSecond:0, metallicity: initialZ});
       }
 
@@ -1884,8 +2108,7 @@
     });
     
     chaseZoomSlider.addEventListener('input', () => { chaseCamZoomTarget = parseFloat(chaseZoomSlider.value); chaseZoomValue.textContent = chaseCamZoomTarget.toFixed(1) + 'x'; });
-    gasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(gasBrightnessSlider.value); gasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; gasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
-    starScaleSlider.addEventListener('input', () => { const val = parseFloat(starScaleSlider.value); starScaleValue.textContent = (val > 0 ? '+' : '') + val; starVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
+    
     speedSlider.addEventListener('input',()=>{physicsSteps=Math.floor(speedSlider.value*2);speedValue.textContent=`${speedSlider.value}x`;});
     massSlider.addEventListener('input',()=>{massValue.textContent=massSlider.value;}); 
     
@@ -1943,7 +2166,14 @@
         if (dragDist > 5) return; 
         const rect = glCanvas.getBoundingClientRect();
         const clickedStar = getStarUnderCursor(e.clientX - rect.left, e.clientY - rect.top, SCANNER_RADIUS);
-        if (!clickedStar) return; 
+        
+        if (!clickedStar) {
+            astrometryTargets = [];
+            spectroscopyTarget = null;
+            projectedOrbitPath = [];
+            refreshAnalysisUI();
+            return;
+        }
         
         if (currentModeId === 'spectroscopy') {
             if (e.shiftKey || e.ctrlKey || e.metaKey) {
