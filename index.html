@@ -222,6 +222,9 @@
         
         <label for="coldGasBrightness">Cold Gas Appearance (-1 to 3): <span id="coldGasBrightnessValue">0</span></label>
         <input type="range" id="coldGasBrightness" min="-1" max="3" step="0.1" value="0">
+
+        <label for="dustBrightness">Dust Appearance (-1 to 3): <span id="dustBrightnessValue">0</span></label>
+        <input type="range" id="dustBrightness" min="-1" max="3" step="0.1" value="0">
         
         <label for="starScale">Star Size (-1 to 3): <span id="starScaleValue">0</span></label>
         <input type="range" id="starScale" min="-1" max="3" step="0.1" value="0">
@@ -328,7 +331,7 @@
         });
     });
 
-    // --- SCIENCE STATE ARCHITECTURE ---
+    // --- SCIENCE STATE & LIVE MASS MODEL ARCHITECTURE ---
     const scienceState = {
         enabled: true,
         selectedPanel: 'rotationCurve',
@@ -348,6 +351,62 @@
             cumulativeStarsFormed: 0
         }
     };
+
+    // Task 0B: Live Cached Baryonic Radial Profile
+    const liveMassModel = {
+        radii: [],
+        enclosedBaryonicMass: [],
+        totalLiveMass: 0,
+        maxRadius: 2000,
+        bins: 40,
+        lastUpdateFrame: -1
+    };
+
+    function updateLiveMassModel() {
+        const binSize = liveMassModel.maxRadius / liveMassModel.bins;
+        let binMasses = new Float32Array(liveMassModel.bins);
+        let currentTotalMass = 0;
+
+        for (let i=0; i<stars.length; i++) {
+            let r = Math.sqrt(stars[i].x*stars[i].x + stars[i].y*stars[i].y);
+            let bin = Math.floor(r / binSize);
+            if (bin < liveMassModel.bins) binMasses[bin] += stars[i].mass;
+            currentTotalMass += stars[i].mass;
+        }
+        for (let i=0; i<gasClouds.length; i++) {
+            let r = Math.sqrt(gasClouds[i].x*gasClouds[i].x + gasClouds[i].y*gasClouds[i].y);
+            let bin = Math.floor(r / binSize);
+            if (bin < liveMassModel.bins) binMasses[bin] += gasClouds[i].mass;
+            currentTotalMass += gasClouds[i].mass;
+        }
+
+        let cumulative = 0;
+        const alpha = 0.1; // Exponential relaxation factor for smooth updates
+        
+        if (liveMassModel.radii.length === 0) {
+            for (let i = 0; i < liveMassModel.bins; i++) {
+                cumulative += binMasses[i];
+                liveMassModel.radii[i] = (i + 0.5) * binSize;
+                liveMassModel.enclosedBaryonicMass[i] = cumulative;
+            }
+            liveMassModel.totalLiveMass = currentTotalMass;
+        } else {
+            for (let i = 0; i < liveMassModel.bins; i++) {
+                cumulative += binMasses[i];
+                liveMassModel.enclosedBaryonicMass[i] = (liveMassModel.enclosedBaryonicMass[i] * (1 - alpha)) + (cumulative * alpha);
+            }
+            liveMassModel.totalLiveMass = (liveMassModel.totalLiveMass * (1 - alpha)) + (currentTotalMass * alpha);
+        }
+    }
+    
+    function getLiveDiskMassAtRadius(r_cyl) {
+        if (liveMassModel.radii.length === 0) return totalDiskMass; 
+        const binSize = liveMassModel.maxRadius / liveMassModel.bins;
+        let bin = Math.floor(r_cyl / binSize);
+        if (bin < 0) return 0;
+        if (bin >= liveMassModel.bins) return liveMassModel.totalLiveMass;
+        return liveMassModel.enclosedBaryonicMass[bin];
+    }
 
     document.getElementById('sciPanelSelect').addEventListener('change', (e) => { scienceState.selectedPanel = e.target.value; updateSciencePanels(true); });
     document.getElementById('sciUpdateMode').addEventListener('change', (e) => { scienceState.updateMode = e.target.value; });
@@ -512,11 +571,14 @@
     const hotGasBrightnessValue = document.getElementById('hotGasBrightnessValue');
     const coldGasBrightnessSlider = document.getElementById('coldGasBrightness');
     const coldGasBrightnessValue = document.getElementById('coldGasBrightnessValue');
+    const dustBrightnessSlider = document.getElementById('dustBrightness');
+    const dustBrightnessValue = document.getElementById('dustBrightnessValue');
     
-    let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let starVisualMult = 2.0;
+    let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
     
     hotGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(hotGasBrightnessSlider.value); hotGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; hotGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
     coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
+    dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + val; dustVisualMult = Math.max(0, 1.0 + val); });
 
     const starScaleSlider = document.getElementById('starScale');
     const starScaleValue = document.getElementById('starScaleValue');
@@ -691,7 +753,8 @@
 
         const MN_a = 200.0, MN_b = 20.0;
         const denom = Math.pow(r_cyl*r_cyl + Math.pow(MN_a + MN_b, 2), 1.5);
-        const a_disk = (G * totalDiskMass * r_cyl) / denom;
+        // TASK 0B: Utilize live mass model for rotation curve prediction where possible
+        const a_disk = (G * getLiveDiskMassAtRadius(r_cyl) * r_cyl) / denom;
 
         const scale = GALAXY_PRESETS[galaxyTypePresetSelect.value].INITIAL_VELOCITY_SCALE;
 
@@ -702,7 +765,10 @@
     }
 
     function computeAccelerations(ps) {
-      const presetType = galaxyTypePresetSelect.value; const preset = GALAXY_PRESETS[presetType];
+      const presetId = galaxyTypePresetSelect.value; 
+      const preset = GALAXY_PRESETS[presetId];
+      // Task 0A: Properly distinguish preset ID from generic physical morphology
+      const morphologyType = preset.type; 
       const bhMass = blackHoles[0] ? blackHoles[0].mass : 0; const armCount = preset.armCount; const haloScale = preset.HALO_DENSITY_SCALE;
       const MN_a = 200.0; const MN_b = 20.0;  
 
@@ -715,21 +781,24 @@
         const F_sph = (G * p.mass * M_sph) / (r_sph*r_sph + FORCE_SOFTENING * FORCE_SOFTENING);
         dax += -(F_sph/p.mass)*(p.x/r_sph); day += -(F_sph/p.mass)*(p.y/r_sph); daz += -(F_sph/p.mass)*(p.z/r_sph);
         
-        if (presetType !== "elliptical") {
+        if (morphologyType !== "elliptical") {
             const z_term = Math.sqrt(p.z*p.z + MN_b*MN_b); const a_z_term = MN_a + z_term;
             const denom = Math.pow(r_cyl*r_cyl + a_z_term*a_z_term, 1.5);
-            const a_R_disk = -(G * totalDiskMass * r_cyl) / denom;
-            const a_Z_disk = -(G * totalDiskMass * p.z * a_z_term) / (z_term * denom);
+            // TASK 0B: Live cached radial baryonic profile dictates disk gravity instead of fixed totalDiskMass
+            const liveMassEnc = getLiveDiskMassAtRadius(r_cyl);
+            const a_R_disk = -(G * liveMassEnc * r_cyl) / denom;
+            const a_Z_disk = -(G * liveMassEnc * p.z * a_z_term) / (z_term * denom);
             dax += a_R_disk * (p.x / r_cyl); day += a_R_disk * (p.y / r_cyl); daz += a_Z_disk;
         }
 
-        if (presetType === "spiral" && p.mass > 0 && r_cyl > 50) {
+        // TASK 0A: Branch using morphologyType so spirals actually get density waves!
+        if (morphologyType === "spiral" && p.mass > 0 && r_cyl > 50) {
             const theta = Math.atan2(p.y, p.x); const phase = armCount * (theta - patternAngle) - (armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
             const F_radial_total = Math.sqrt(dax*dax + day*day); const F_pert = F_radial_total * 0.02; 
             const F_r_spiral = F_pert * Math.cos(phase); const F_t_spiral = -F_pert * Math.sin(phase); 
             dax += F_r_spiral * (p.x/r_cyl) - F_t_spiral * (p.y/r_cyl); day += F_r_spiral * (p.y/r_cyl) + F_t_spiral * (p.x/r_cyl);
         }
-        if (presetType === "disc" && presetType !== "ring" && r_cyl < bulgeRadius * 1.5) {
+        if (morphologyType === "disc" && presetId !== "ring" && r_cyl < bulgeRadius * 1.5) {
             const theta = Math.atan2(p.y, p.x); const relTheta = theta - barAngle;
             const F_radial_total = Math.sqrt(dax*dax + day*day); const A = 0.05 * Math.exp(-Math.pow(r_cyl / (bulgeRadius * 0.8), 2));
             const f_r_bar = F_radial_total * A * Math.cos(2 * relTheta); const f_t_bar = F_radial_total * A * Math.sin(2 * relTheta);
@@ -953,6 +1022,7 @@
         scienceState.lastUpdateFrame = frameCount;
     }
 
+    // --- RE-INSERTED MISSING FUNCTIONS (Task 0B & 0C) ---
     function calculateProjectedOrbit(star) {
         projectedOrbitPath = []; let px = star.x, py = star.y, pz = star.z, pvx = star.vx, pvy = star.vy, pvz = star.vz;
         let ax = 0, ay = 0, az = 0;
@@ -964,7 +1034,11 @@
             const MN_a = 200.0; const MN_b = 20.0;
             const z_term = Math.sqrt(pz*pz + MN_b*MN_b); const a_z_term = MN_a + z_term;
             const denom = Math.pow(r_cyl*r_cyl + a_z_term*a_z_term, 1.5);
-            ax += -(G * totalDiskMass * px) / denom; ay += -(G * totalDiskMass * py) / denom; az += -(G * totalDiskMass * pz * a_z_term) / (z_term * denom);
+            
+            // TASK 0B: Utilize live mass model for orbital projection
+            const liveMassEnc = getLiveDiskMassAtRadius(r_cyl);
+            
+            ax += -(G * liveMassEnc * px) / denom; ay += -(G * liveMassEnc * py) / denom; az += -(G * liveMassEnc * pz * a_z_term) / (z_term * denom);
             pvx += ax * dt * 10; pvy += ay * dt * 10; pvz += az * dt * 10;
             px += pvx * dt * 10; py += pvy * dt * 10; pz += pvz * dt * 10;
             projectedOrbitPath.push({x: px, y: py, z: pz});
@@ -972,6 +1046,7 @@
     }
 
     function gaussianRandom(m=0,s=1){const u1=Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;}
+    // ----------------------------------------------------
     
     let lastEnergy = {kinetic: 0, potential: 0, total: 0};
     function computeTotalEnergy(allParticles){
@@ -983,7 +1058,8 @@
         if(r_sph>0) {
           const M_sph = getDarkMatterMass(r_sph) + bulgeMass + (blackHoles[0] ? blackHoles[0].mass : 0);
           const U_sph = -(G*p.mass*M_sph)/r_sph; 
-          const U_disk = -(G*p.mass*totalDiskMass) / Math.sqrt(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(p.z*p.z + MN_b*MN_b), 2));
+          // TASK 0B: Utilize live mass model for energy checking too
+          const U_disk = -(G*p.mass*getLiveDiskMassAtRadius(r_cyl)) / Math.sqrt(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(p.z*p.z + MN_b*MN_b), 2));
           U += U_sph + U_disk;
         }
       }
@@ -1033,11 +1109,14 @@
         if (presetId === "ring") ringShockRadius += 10.0 * dt; 
 
         checkSFRBucket();
+        
+        // TASK 0B: Update our smoothed live mass cache regularly
+        if (frameCount % 30 === 0) updateLiveMassModel();
 
         for(const bh of blackHoles) { bh.massAccretedThisFrame = 0; bh.accretionGlow *= 0.95; }
 
         // --- STOCHASTIC CLOUD MERGERS (FUZZY COLLISIONS) ---
-        let collisionChecks = Math.floor(gasClouds.length * 0.05); 
+        let collisionChecks = Math.floor(gasClouds.length * 0.01); 
         for (let c = 0; c < collisionChecks; c++) {
             let i1 = Math.floor(Math.random() * gasClouds.length);
             let i2 = Math.floor(Math.random() * gasClouds.length);
@@ -1061,6 +1140,7 @@
                 
                 c1.mass = totalMass;
                 c1.heat = Math.max(c1.heat, c2.heat) + 150; 
+                c1.maxStars = (c1.maxStars || 0) + Math.floor((c2.maxStars || 0) * 0.8); 
                 c2.mass = 0; 
             }
         }
@@ -1096,7 +1176,7 @@
             const BH_MASS_SCALE = 0.001; 
             for (let i = gasClouds.length - 1; i >= 0; i--) {
                 const cloud = gasClouds[i];
-                if (cloud.mass < 0.5) continue;
+                if (cloud.mass < 1.0) continue;
                 let dx = cloud.x - bh.x, dy = cloud.y - bh.y, dz = cloud.z - bh.z;
                 if (dx*dx+dy*dy+dz*dz < accretionRadiusSq && Math.random() < ACCRETION_PROBABILITY) {
                     const scaledCloudMass = cloud.mass * BH_MASS_SCALE;
@@ -1150,26 +1230,27 @@
               continue;
           }
 
-          cloud.mass *= (1.0 - 0.001 * dt); // Prevent sudden poofing, allow extremely long gradual decay
-          cloud.heat = Math.max(5, cloud.heat * (1 - 2.0 * dt)); // Faster cooling so stars can form
+          cloud.mass *= (1.0 - 0.00001 * dt); 
+          cloud.heat = Math.max(5, cloud.heat - (cloud.heat * 0.5 * dt)); 
           
           const r_cyl = Math.max(0.1, Math.sqrt(cloud.x*cloud.x + cloud.y*cloud.y));
           
+          // TASK 0A: Utilizing morphologyType instead of presetId string checks
           if (presetType === "spiral") {
               if (r_cyl > 50 && r_cyl < galaxyRadius) {
                   const theta = Math.atan2(cloud.y, cloud.x);
                   const m_arms = GALAXY_PRESETS[presetId].armCount;
                   const phase = m_arms * (theta - patternAngle) - (m_arms / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
-                  if (Math.cos(phase) > 0.8) { cloud.heat += 15.0 * dt; }
+                  if (Math.cos(phase) > 0.6) { cloud.heat += 150.0 * dt; }
               }
           } else {
-              cloud.heat += (12.0 / (r_cyl * 0.005 + 1.0)) * dt + (Math.random() * 2.0 * dt);
+              cloud.heat += (30.0 / (r_cyl * 0.005 + 1.0)) * dt + (Math.random() * 2.0 * dt);
           }
           
           if (presetId === "ring") {
               const distToShock = r_cyl - ringShockRadius;
-              if (distToShock > 0 && distToShock < 80) {
-                  cloud.vx += (cloud.x/r_cyl) * 8.0 * dt; cloud.vy += (cloud.y/r_cyl) * 8.0 * dt; cloud.heat *= 0.95; 
+              if (distToShock > -20 && distToShock < 60) {
+                  cloud.vx += (cloud.x/r_cyl) * 8.0 * dt; cloud.vy += (cloud.y/r_cyl) * 8.0 * dt; cloud.heat += 150.0 * dt; 
               }
           }
           
@@ -1178,7 +1259,7 @@
           cloud.vz *= (1 - 0.05 * dt); 
 
           if (isCold && cloud.mass > 1.0) {
-            let spawnRate = (cloud.mass / 150.0) * 0.2; // Optimized for 5-8 Gyr visual longevity
+            let spawnRate = (cloud.mass / 150.0) * 0.2; 
             cloud.spawnCountThisSecond += (spawnRate * dt);
             
             if (cloud.spawnCountThisSecond >= 1) {
@@ -1219,7 +1300,7 @@
                     let remnantMass = star.initialMass > 20.0 ? 3.0 + (star.initialMass * 0.1) : 1.4; 
                     let ejectedMass = star.initialMass - remnantMass;
                     
-                    let numFragments = 4; // Fewer, more massive fragments to survive and merge
+                    let numFragments = 4; 
                     let massPerFragment = ejectedMass / numFragments;
                     let explosionVelocity = 25; 
                     
@@ -1228,14 +1309,15 @@
                     for (let f = 0; f < numFragments; f++) {
                         let phi = Math.acos(1 - 2 * (f + 0.5) / numFragments); let theta = Math.PI * (1 + Math.sqrt(5)) * (f + 0.5);
                         let dirX = Math.sin(phi) * Math.cos(theta); let dirY = Math.sin(phi) * Math.sin(theta); let dirZ = Math.cos(phi);
-                        
+                        let fragMaxStars = Math.floor(10 + Math.random() * 10);
                         gasClouds.push({
                             x: star.x + dirX * 2, y: star.y + dirY * 2, z: star.z + dirZ * 2,
+                            // TASK 0C: Fragments inherit original star orbital velocity correctly
                             vx: star.vx + (dirX * explosionVelocity * 0.3), 
                             vy: star.vy + (dirY * explosionVelocity * 0.3), 
                             vz: star.vz + (dirZ * explosionVelocity * 0.3),
                             ax: 0, ay: 0, az: 0, mass: massPerFragment, heat: 5000, size: k * Math.pow(massPerFragment, 1/3) * 1.5,
-                            galaxyIndex: 0, starsCreated: 0, spawnCountThisSecond: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT
+                            galaxyIndex: 0, starsCreated: 0, spawnCountThisSecond: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT, maxStars: fragMaxStars
                         });
                     }
 
@@ -1405,7 +1487,7 @@
             rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6));
         }
 
-        return Math.max(0, zDensity * rDensity * (totalGasMassCached / 50000.0));
+        return Math.max(0, zDensity * rDensity * (totalGasMassCached / 50000.0) * dustVisualMult);
     }
 
     function getPlanckColor(temp) {
@@ -2005,6 +2087,12 @@
       centralBHMass = parseInt(massSlider.value);
       blackHoles = [{x:0, y:0, z:0, vx:0, vy:0, vz:0, ax:0, ay:0, az:0, mass:centralBHMass, radius:Math.max(15.0, baseEventHorizon * centralBHMass), accretionGlow:0, jetTimer:0, massAccretedThisFrame:0, isBH:true}];
       stars = []; gasClouds = []; jetParticles = []; astrometryTargets = []; spectroscopyTarget = null; remnants = []; 
+      
+      // Reset live mass model
+      liveMassModel.radii = [];
+      liveMassModel.enclosedBaryonicMass = [];
+      liveMassModel.totalLiveMass = 0;
+      
       refreshAnalysisUI();
       
       glCanvas.style.cursor = "default"; isDirectorMode = false; document.getElementById('directorModeBtn').textContent = "Toggle Director Mode";
@@ -2081,11 +2169,21 @@
 
         const gasVx = -v*y/r_cyl + gaussianRandom(0, v * 0.05), gasVy = v*x/r_cyl + gaussianRandom(0, v * 0.05), gasVz = gaussianRandom(0,v*0.1);
         const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+        const cMaxStars = Math.floor(stageParams.maxNormal * (0.5 + Math.random()) * Math.pow(mass/150, 0.5));
+        
+        let initialHeat = 10 + Math.random()*10;
+        if (preset.type === "spiral" && r_cyl > 50 && r_cyl < galaxyRadius) {
+            const phase = preset.armCount * (theta) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
+            if (Math.cos(phase) > 0.6) initialHeat = 60 + Math.random()*100;
+        } else if (presetId === "ring") {
+            if (Math.abs(r_cyl - ringShockRadius) < 60) initialHeat = 80 + Math.random()*100;
+        }
 
-        gasClouds.push({x:x,y:y,z:z,vx:gasVx,vy:gasVy,vz:gasVz, ax:0, ay:0, az:0, mass, heat: 10 + Math.random()*20, size:k*Math.pow(mass,1/3), galaxyIndex:0, starsCreated:0, spawnCountThisSecond:0, metallicity: initialZ});
+        gasClouds.push({x:x,y:y,z:z,vx:gasVx,vy:gasVy,vz:gasVz, ax:0, ay:0, az:0, mass, heat: initialHeat, size:k*Math.pow(mass,1/3), galaxyIndex:0, starsCreated:0, spawnCountThisSecond:0, metallicity: initialZ, maxStars: cMaxStars});
       }
 
       elapsedTime=0;snapshots=[];
+      updateLiveMassModel();
       computeAccelerations([...blackHoles, ...stars, ...gasClouds]);
       
       scienceState.sfr.history = []; scienceState.sfr.currentBucketStart = 0; scienceState.sfr.currentBucketMass = 0;
