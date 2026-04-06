@@ -181,6 +181,9 @@
         
         <label for="gasAmount">Gas Amount: <span id="gasAmountValue">100%</span></label>
         <input type="range" id="gasAmount" min="0.1" max="8.0" step="0.1" value="1.0">
+        
+        <label for="inflowRate">Cosmic Gas Inflow: <span id="inflowRateValue">10 M☉/yr</span></label>
+        <input type="range" id="inflowRate" min="0" max="50" step="1" value="10">
       </div>
     </div>
 
@@ -551,6 +554,11 @@
     let dataRecordBuffer = [];
     const MAX_RECORD_ROWS = 5000;
     let dataRecordPart = 1;
+    let cosmologicalInflowReservoir = 0;
+    
+    const inflowRateSlider = document.getElementById('inflowRate');
+    const inflowRateValue = document.getElementById('inflowRateValue');
+    inflowRateSlider.addEventListener('input', () => { inflowRateValue.textContent = inflowRateSlider.value + ' M☉/yr'; });
     
     const CSV_HEADERS = [
         "Time (Myr)", "Stability Index", "Total Energy", "Kinetic Energy", "Potential Energy", 
@@ -1127,7 +1135,8 @@
     function generateStarMass() {
         let minM = 0.1, maxM = 50.0;
         let u = Math.random();
-        return Math.pow( u * Math.pow(maxM, -1.35) + (1-u) * Math.pow(minM, -1.35) , -1/1.35 );
+        let alpha = -0.7; 
+        return Math.pow( u * Math.pow(maxM, alpha) + (1-u) * Math.pow(minM, alpha) , 1/alpha );
     }
 
     function initStarPhysics(star) {
@@ -1258,6 +1267,54 @@
         checkSFRBucket();
         
         if (frameCount % 30 === 0) updateLiveMassModel();
+        
+        // --- COSMIC COLD GAS INFLOW ---
+        let inflowRateVal = parseFloat(inflowRateSlider.value) * 100; 
+        cosmologicalInflowReservoir += inflowRateVal * dt;
+        
+        const stageParamsCurrent = {
+            new:   { avgGasMass: 200 },
+            adult: { avgGasMass: 150 },
+            dying: { avgGasMass: 50 }
+        }[galaxyStageSelect.value];
+        
+        let spawnMass = stageParamsCurrent.avgGasMass;
+        let maxClouds = parseInt(starCountSlider.value) * 1.5;
+
+        while (cosmologicalInflowReservoir >= spawnMass && gasClouds.length < maxClouds) {
+            cosmologicalInflowReservoir -= spawnMass;
+            
+            let spawnRadius = galaxyRadius * 1.8;
+            let theta = Math.random() * 2 * Math.PI;
+            let cx = spawnRadius * Math.cos(theta);
+            let cy = spawnRadius * Math.sin(theta);
+            let cz = gaussianRandom(0, 50); 
+            
+            const M_enc = getLiveDiskMassAtRadius(spawnRadius) + getDarkMatterMass(spawnRadius) + centralBHMass + bulgeMass;
+            const v_circ = Math.sqrt((G * M_enc) / spawnRadius) * GALAXY_PRESETS[galaxyTypePresetSelect.value].INITIAL_VELOCITY_SCALE;
+            
+            let v_tan = v_circ * 0.7;
+            let v_rad = -v_circ * 0.3;
+
+            let cvx = (cx / spawnRadius) * v_rad - (cy / spawnRadius) * v_tan;
+            let cvy = (cy / spawnRadius) * v_rad + (cx / spawnRadius) * v_tan;
+            let cvz = gaussianRandom(0, v_circ * 0.05);
+
+            gasClouds.push({
+                id: cloudIdCounter++, 
+                x: cx, y: cy, z: cz, 
+                vx: cvx, vy: cvy, vz: cvz, 
+                ax: 0, ay: 0, az: 0, 
+                mass: spawnMass, 
+                heat: 10, 
+                turbulence: 2, 
+                size: k * Math.pow(spawnMass, 1/3), 
+                galaxyIndex: 0, 
+                starsCreated: 0, 
+                stellarMassReservoir: 0, 
+                metallicity: 0.01 
+            });
+        }
         
         buildSpatialHash();
 
@@ -1435,19 +1492,43 @@
           }
 
           cloud.mass *= (1.0 - 0.00001 * dt); 
-          
           cloud.turbulence = Math.max(0, (cloud.turbulence || 0) * (1 - 0.5 * dt));
-          
-          let currentVol = Math.max(1, cloud.size * cloud.size * cloud.size);
-          let currentRho = (cloud.mass * 100.0) / currentVol;
-          let densityCoolingMultiplier = Math.min(2.5, Math.max(0.1, currentRho * 0.1));
-
-          let radiativeCooling = Math.max(0.5, cloud.metallicity * 2.0) * densityCoolingMultiplier; 
-          let highTempRadiator = 1.0 + Math.pow(cloud.heat / 200.0, 2); 
-          cloud.heat = Math.max(5, cloud.heat - (cloud.heat * radiativeCooling * highTempRadiator * 0.15 * dt)); 
           
           const r_cyl = Math.max(0.1, Math.sqrt(cloud.x*cloud.x + cloud.y*cloud.y));
           
+          // --- AMBIENT PRESSURE & COMPRESSION ---
+          let ambientPressure = Math.exp(-Math.abs(cloud.z) / 40.0) * Math.exp(-r_cyl / galaxyRadius);
+          let pressureCompression = 0.5 + ambientPressure; 
+          
+          let thermalExpansion = cloud.heat < 15 ? 1.0 : 1.0 + Math.min(2.0, cloud.heat / 150.0);
+          cloud.size = (k * Math.pow(cloud.mass, 1/3) * thermalExpansion) / pressureCompression;
+          
+          let currentVol = Math.max(1, cloud.size * cloud.size * cloud.size);
+          let currentRho = (cloud.mass * 100.0) / currentVol;
+          
+          // --- GALACTIC FOUNTAIN (Thermal Buoyancy) & HALO COOLING ---
+          let thermalBuoyancy = 0;
+          if (cloud.heat > 150) {
+              thermalBuoyancy = (cloud.heat - 150) * 0.0005; 
+          }
+          if (cloud.z >= 0) {
+              cloud.vz += thermalBuoyancy * dt;
+          } else {
+              cloud.vz -= thermalBuoyancy * dt;
+          }
+          cloud.vz *= (1 - 0.05 * dt); // Dampen z-velocity
+          
+          let verticalIsolation = Math.max(0, (Math.abs(cloud.z) - 100) / 100.0);
+          let haloCooling = 1.0 + verticalIsolation;
+
+          // --- THERMODYNAMICS ---
+          let densityCoolingMultiplier = Math.min(2.5, Math.max(0.1, currentRho * 0.1));
+          let radiativeCooling = Math.max(0.5, cloud.metallicity * 2.0) * densityCoolingMultiplier; 
+          let highTempRadiator = 1.0 + Math.pow(cloud.heat / 200.0, 2); 
+          
+          cloud.heat = Math.max(5, cloud.heat - (cloud.heat * radiativeCooling * highTempRadiator * haloCooling * 0.15 * dt)); 
+          
+          // --- SHOCKS & EXTERNAL HEATING ---
           let compression = 1.0;
           if (presetType === "spiral") {
               if (r_cyl > 50 && r_cyl < galaxyRadius) {
@@ -1472,54 +1553,56 @@
               }
           }
           
-          let thermalExpansion = cloud.heat < 15 ? 1.0 : 1.0 + Math.min(2.0, cloud.heat / 150.0);
-          cloud.size = k * Math.pow(cloud.mass, 1/3) * thermalExpansion;
-          cloud.vz *= (1 - 0.05 * dt); 
-
+          // --- STAR FORMATION (CRITICAL DENSITY THRESHOLD) ---
           cloud.coldFraction = clamp(1.0 - cloud.heat / 50.0, 0.0, 1.0);
-          let collapseRadius = Math.max(1.0, k * Math.pow(cloud.mass, 1/3) * clamp(1.2 - cloud.heat / 200.0, 0.4, 1.2));
           
-          let rho = (cloud.mass * 100.0) / Math.max(1, collapseRadius * collapseRadius * collapseRadius);
-          let t_ff = 1.0 / Math.sqrt(G * rho + 0.001);
+          const CRITICAL_DENSITY = 5.0; 
           
-          let eps_ff = 0.015 * cloud.coldFraction * compression / (1.0 + 0.1 * (cloud.turbulence || 0));
-          let eps_ff_clamped = clamp(eps_ff, 0.0, 0.05);
-          
-          let dM_star = eps_ff_clamped * cloud.mass * (dt / t_ff);
-          
-          let maxDrain = cloud.mass * 0.02;
-          dM_star = Math.min(dM_star, maxDrain); 
-          
-          cloud.stellarMassReservoir = (cloud.stellarMassReservoir || 0) + dM_star;
+          if (currentRho > CRITICAL_DENSITY) {
+              let collapseRadius = Math.max(1.0, (k * Math.pow(cloud.mass, 1/3) * clamp(1.2 - cloud.heat / 200.0, 0.4, 1.2)) / pressureCompression);
+              let rho_collapse = (cloud.mass * 100.0) / Math.max(1, collapseRadius * collapseRadius * collapseRadius);
+              let t_ff = 1.0 / Math.sqrt(G * rho_collapse + 0.001);
+              
+              let eps_ff = 0.015 * cloud.coldFraction * compression / (1.0 + 0.1 * (cloud.turbulence || 0));
+              let eps_ff_clamped = clamp(eps_ff, 0.0, 0.05);
+              
+              let dM_star = eps_ff_clamped * cloud.mass * (dt / t_ff);
+              let maxDrain = cloud.mass * 0.005;
+              dM_star = Math.min(dM_star, maxDrain); 
+              
+              cloud.stellarMassReservoir = (cloud.stellarMassReservoir || 0) + dM_star;
 
-          if (cloud.stellarMassReservoir >= 0.5 && cloud.mass > 1.0) {
-              let massVariation = generateStarMass();
-              massVariation = Math.max(0.1, Math.min(massVariation, cloud.mass - 0.5));
-              massVariation = Math.min(massVariation, cloud.stellarMassReservoir); 
-              
-              let newStar = { 
-                  x: cloud.x+(Math.random()-.5)*cloud.size, 
-                  y: cloud.y+(Math.random()-.5)*cloud.size, 
-                  z: cloud.z+(Math.random()-.5)*cloud.size, 
-                  vx: cloud.vx, vy: cloud.vy, vz: cloud.vz, 
-                  initialMass: massVariation, 
-                  trail: new Float32Array(MAX_TRAIL_LENGTH*3), 
-                  trailIdx:0, trailCount:0, 
-                  ageMyr:0, 
-                  metallicity: cloud.metallicity, 
-                  ax: cloud.ax, ay: cloud.ay, az: cloud.az 
-              };
-              initStarPhysics(newStar);
-              stars.push(newStar);
-              
-              cloud.mass -= massVariation; 
-              cloud.stellarMassReservoir -= massVariation;
-              cloud.starsCreated++;
-              
-              cloud.heat += 10.0; 
-              cloud.turbulence += 2.0;
+              if (cloud.stellarMassReservoir >= 0.5 && cloud.mass > 1.0) {
+                  let massVariation = generateStarMass();
+                  massVariation = Math.max(0.1, Math.min(massVariation, cloud.mass - 0.5));
+                  massVariation = Math.min(massVariation, cloud.stellarMassReservoir); 
+                  
+                  let newStar = { 
+                      x: cloud.x+(Math.random()-.5)*cloud.size, 
+                      y: cloud.y+(Math.random()-.5)*cloud.size, 
+                      z: cloud.z+(Math.random()-.5)*cloud.size, 
+                      vx: cloud.vx, vy: cloud.vy, vz: cloud.vz, 
+                      initialMass: massVariation, 
+                      trail: new Float32Array(MAX_TRAIL_LENGTH*3), 
+                      trailIdx:0, trailCount:0, 
+                      ageMyr:0, 
+                      metallicity: cloud.metallicity, 
+                      ax: cloud.ax, ay: cloud.ay, az: cloud.az 
+                  };
+                  initStarPhysics(newStar);
+                  stars.push(newStar);
+                  
+                  cloud.mass -= massVariation; 
+                  cloud.stellarMassReservoir -= massVariation;
+                  cloud.starsCreated++;
+                  
+                  cloud.heat += massVariation * 2.5; 
+                  cloud.turbulence += massVariation * 0.5;
 
-              recordStarFormationEvent(massVariation, 1, elapsedTime / 1e6);
+                  recordStarFormationEvent(massVariation, 1, elapsedTime / 1e6);
+              }
+          } else {
+              cloud.stellarMassReservoir = 0; 
           }
         }
 
@@ -2364,6 +2447,7 @@
       liveMassModel.enclosedBaryonicMass = [];
       liveMassModel.totalLiveMass = 0;
       cloudIdCounter = 0; 
+      cosmologicalInflowReservoir = 0; // Reset inflow budget on restart
       
       refreshAnalysisUI();
       
