@@ -3,162 +3,280 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Galaxy Simulation – Observatory & Science Edition</title>
+  <title>Galaxy Simulation – Observatory Edition</title>
   <style>
+    :root {
+      --bg-dark: #090a0f;
+      --bg-panel: #11141a;
+      --bg-header: rgba(255, 255, 255, 0.05);
+      --bg-hover: rgba(255, 255, 255, 0.1);
+      --text-main: #e2e8f0;
+      --text-muted: #94a3b8;
+      --accent-blue: #3b82f6;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-purple: #8b5cf6;
+      --border-color: #334155;
+    }
+
     html, body {
       margin: 0; padding: 0; width: 100%; height: 100%;
-      background: #000; overflow: hidden;
+      background: var(--bg-dark); overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text-main);
     }
     body { display: flex; flex-direction: row; }
+
+    /* --- SIDEBAR --- */
     #controls {
-      width: 280px; background: #111; color: #fff;
-      padding: 15px 15px 10px 15px; box-sizing: border-box; z-index: 10; overflow-y: auto;
-      box-shadow: 2px 0 10px rgba(0,0,0,0.8);
+      width: 300px; background: var(--bg-panel);
+      padding: 15px; box-sizing: border-box; z-index: 10; overflow-y: auto;
+      box-shadow: 2px 0 15px rgba(0,0,0,0.9);
+      border-right: 1px solid var(--border-color);
+      transition: transform 0.3s ease;
     }
-    
-    /* COLLAPSIBLE UI STYLES */
-    .control-group { margin-bottom: 5px; }
+    body.presentation-mode #controls { transform: translateX(-100%); position: absolute; height: 100%; }
+
+    .control-group { margin-bottom: 8px; }
     .group-header {
       display: flex; justify-content: space-between; align-items: center;
-      background: rgba(255, 255, 255, 0.08); padding: 8px 10px; margin: 0 -5px 10px -5px;
+      background: var(--bg-header); padding: 10px 12px; margin: 0 -5px 10px -5px;
       cursor: pointer; font-weight: 600; text-transform: uppercase; font-size: 11px;
-      letter-spacing: 1px; color: #bbb; transition: background 0.2s, color 0.2s;
-      border-radius: 4px; user-select: none;
+      letter-spacing: 1px; color: var(--text-muted); transition: all 0.2s;
+      border-radius: 6px; user-select: none;
     }
-    .group-header:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
-    .group-toggle { font-size: 14px; font-weight: bold; color: #88bbff; line-height: 1; }
+    .group-header:hover { background: var(--bg-hover); color: #fff; }
+    .group-toggle { font-size: 14px; font-weight: bold; color: var(--accent-blue); line-height: 1; }
     .group-header:hover .group-toggle { color: #fff; }
     .group-content { display: block; margin-bottom: 15px; padding: 0 5px; }
     .group-content.collapsed { display: none; }
-    
-    #sim-container { position: relative; flex: 1; height: 100%; background: #000; }
+
+    /* --- SIMULATION CANVAS --- */
+    #sim-container { position: relative; flex: 1; height: 100%; background: var(--bg-dark); }
     #simulation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
     #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+
+    /* --- HUD --- */
+    #hud {
+      position: absolute; top: 15px; left: 20px; z-index: 5;
+      display: flex; gap: 10px; pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    body.presentation-mode #hud { opacity: 0.3; } 
+    .hud-card {
+      background: rgba(15, 20, 25, 0.7); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+      padding: 8px 12px; display: flex; flex-direction: column; align-items: flex-start;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+    }
+    .hud-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 3px; }
+    .hud-value { font-size: 14px; font-weight: bold; font-variant-numeric: tabular-nums; }
+    .val-active { color: var(--accent-amber); }
+    .val-cool { color: var(--accent-blue); }
+    .val-alert { color: var(--accent-red); }
+
+    /* --- CONTEXTUAL HINT --- */
+    #interactionHint {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.75); border: 1px solid rgba(255,255,255,0.2);
+      color: #cbd5e1; padding: 8px 16px; border-radius: 20px;
+      font-size: 12px; letter-spacing: 0.5px; z-index: 10;
+      backdrop-filter: blur(4px); pointer-events: none;
+      transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    body.presentation-mode #interactionHint { opacity: 0; }
+
+    /* EXIT PRESENTATION BTN */
+    #exitPresentationBtn {
+      display: none; position: absolute; top: 20px; right: 20px; z-index: 1000;
+      padding: 10px 20px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2);
+      color: white; border-radius: 8px; cursor: pointer; backdrop-filter: blur(4px);
+      font-size: 12px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: background 0.2s;
+    }
+    #exitPresentationBtn:hover { background: rgba(255,255,255,0.1); }
+    body.presentation-mode #exitPresentationBtn { display: block; }
+
+    /* --- SNAPSHOT DRAWER --- */
+    #snapshots-wrapper {
+      position: fixed; right: 0; top: 0; height: 100vh; z-index: 10;
+      display: flex; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translateX(0);
+    }
+    body.drawer-collapsed #snapshots-wrapper { transform: translateX(260px); }
+    body.presentation-mode #snapshots-wrapper { transform: translateX(260px); }
+    
+    #snapshot-toggle-btn {
+      width: 30px; height: 60px; margin-top: 20px; background: var(--bg-panel);
+      border: 1px solid var(--border-color); border-right: none;
+      border-radius: 8px 0 0 8px; color: var(--text-muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: -2px 0 10px rgba(0,0,0,0.5);
+    }
+    #snapshot-toggle-btn:hover { color: #fff; background: var(--bg-hover); }
+
     #snapshots {
-      width: 200px; background: #111; color: #fff; padding: 10px;
-      box-sizing: border-box; overflow-y: auto; height: 100vh;
-      position: fixed; right: 0; top: 0; z-index: 10;
-      box-shadow: -2px 0 10px rgba(0,0,0,0.8);
+      width: 260px; background: var(--bg-panel); color: #fff; padding: 15px;
+      box-sizing: border-box; overflow-y: auto; height: 100%;
+      border-left: 1px solid var(--border-color); box-shadow: -2px 0 15px rgba(0,0,0,0.8);
     }
-    #snapshots h3 { margin: 0 0 10px 0; font-size: 16px; text-align: center; }
-    .snapshot { margin-bottom: 10px; text-align: center; }
-    .snapshot img { width: 100%; height: auto; border: 1px solid #666; }
-    .snapshot p { margin: 5px 0 0 0; font-size: 12px; }
+    #snapshots h3 { margin: 0 0 15px 0; font-size: 14px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
+    .snapshot { margin-bottom: 15px; text-align: center; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); }
+    .snapshot img { width: 100%; height: auto; border-radius: 4px; }
+    .snapshot p { margin: 8px 0 4px 0; font-size: 11px; color: var(--text-muted); }
+
+    /* --- UI ELEMENTS --- */
+    label { display: flex; justify-content: space-between; margin: 12px 0 6px 0; font-size: 12px; color: var(--text-main); font-weight: 500; }
+    .help-text { font-size: 10px; color: var(--text-muted); font-style: italic; margin-bottom: 10px; line-height: 1.3; }
+    .text-warning { color: var(--accent-amber); font-weight: bold; }
+    input[type="range"] { width: 100%; box-sizing: border-box; margin-bottom: 5px; accent-color: var(--accent-blue); }
+    select { width: 100%; box-sizing: border-box; padding: 8px 10px; margin: 2px 0 10px 0; background: rgba(0,0,0,0.3); color: #fff; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; }
     
-    #scale, #timer, #stability, #energy, #epoch {
-      position: absolute; font-size: 12px; color: #fff;
-      text-shadow: 1px 1px 2px black; left: 300px; z-index: 5;
-    }
-    #timer { top: 10px; }
-    #stability { top: 30px; }
-    #energy { top: 50px; }
-    #epoch { top: 70px; }
-    #scale { bottom: 10px; }
+    button { width: 100%; box-sizing: border-box; padding: 10px; margin: 4px 0; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; color: #fff; transition: background 0.2s, transform 0.1s; background: #334155; }
+    button:active { transform: scale(0.98); }
+    .btn-primary { background: var(--accent-blue); } .btn-primary:hover { background: #2563eb; }
+    .btn-success { background: var(--accent-green); } .btn-success:hover { background: #059669; }
+    .btn-warning { background: var(--accent-amber); color: #000; } .btn-warning:hover { background: #d97706; }
+    .btn-danger { background: var(--accent-red); } .btn-danger:hover { background: #dc2626; }
+    .btn-purple { background: var(--accent-purple); } .btn-purple:hover { background: #7c3aed; }
     
+    .btn-record { background: var(--accent-red); animation: pulse 1s infinite alternate; border: 1px solid #ff8888; }
+    @keyframes pulse { 0% { opacity: 1; box-shadow: 0 0 5px var(--accent-red); } 100% { opacity: 0.8; box-shadow: 0 0 15px var(--accent-red); } }
+
+    .checkbox-label { margin: 8px 0; font-size: 12px; display: flex; align-items: center; color: var(--text-main); font-weight: normal; justify-content: flex-start; }
+    .checkbox-label input { margin-right: 10px; }
+    
+    /* --- POPUPS & PANELS --- */
     #starPopup {
-      position: absolute; display: none; background: rgba(15, 20, 30, 0.85);
-      border: 1px solid rgba(100, 180, 255, 0.3); color: #e0e0e0; padding: 16px; border-radius: 12px;
-      font-size: 13px; z-index: 100;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.9), inset 0 0 15px rgba(100, 180, 255, 0.05);
-      backdrop-filter: blur(8px); min-width: 260px; font-family: "Segoe UI", Roboto, Helvetica, sans-serif;
-      pointer-events: auto;
+      position: absolute; display: none; background: rgba(15, 20, 25, 0.9);
+      border: 1px solid rgba(100, 180, 255, 0.2); color: #fff; padding: 16px; border-radius: 12px;
+      font-size: 13px; z-index: 100; box-shadow: 0 15px 35px rgba(0,0,0,0.9);
+      backdrop-filter: blur(12px); min-width: 250px; pointer-events: auto;
     }
-    .popup-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(100, 180, 255, 0.2); padding-bottom: 8px; margin-bottom: 12px; cursor: pointer; user-select: none; }
-    .popup-header:hover { background: rgba(255,255,255,0.05); border-radius: 4px; }
-    .popup-header strong { color: #fff; font-size: 15px; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; font-weight: 600; text-shadow: 0 0 5px rgba(255,255,255,0.3); }
-    .popup-toggle { font-weight: bold; color: rgba(100, 180, 255, 0.8); font-size: 18px; line-height: 1; padding: 0 6px; transition: color 0.2s; }
+    .popup-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; margin-bottom: 12px; cursor: pointer; }
+    .popup-header strong { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-blue); }
+    .popup-toggle { font-weight: bold; color: var(--text-muted); font-size: 16px; transition: color 0.2s; }
     .popup-header:hover .popup-toggle { color: #fff; }
-    #starPopup hr { border: none; border-top: 1px dotted rgba(255,255,255,0.15); margin: 12px 0; }
     .stat-row { display: flex; justify-content: space-between; margin-bottom: 6px; align-items: center; }
-    .stat-label { color: #88bbff; opacity: 0.8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;}
-    .stat-value { font-weight: 600; color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
-    .section-title { color: rgba(255,255,255,0.6); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; margin-bottom: 8px; margin-top: 12px; text-align: center; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 4px; }
-    
-    /* Spectroscopy Panel */
-    #spectroscopy-panel {
-      position: absolute; bottom: 20px; right: 220px; width: 460px; height: 290px;
-      background: #0d1117; 
-      border: 1px solid #30363d; border-radius: 8px;
-      display: none; flex-direction: column; z-index: 100;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.9);
-      pointer-events: none;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    #spec-header {
-      background: #161b22; padding: 10px 14px; font-size: 13px; font-weight: 600;
-      color: #e6edf3; border-bottom: 1px solid #30363d; border-radius: 8px 8px 0 0;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    #spec-canvas-container { flex: 1; padding: 0; position: relative; }
-    #spectrumCanvas { width: 100%; height: 100%; display: block; }
+    .stat-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;}
+    .stat-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .section-title { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: bold; margin: 12px 0 6px 0; border-bottom: 1px dotted rgba(255,255,255,0.1); padding-bottom: 2px; }
 
     /* Science Panel */
-    #sciencePanelWrap { margin-top: 10px; background: rgba(0,0,0,0.5); border: 1px solid #444; border-radius: 4px; padding: 8px; }
-    #scienceCanvas { width: 100%; height: 180px; display: block; border-bottom: 1px solid #333; }
-    #scienceStats { font-size: 11px; color: #ccc; margin-top: 8px; min-height: 40px; line-height: 1.4; }
-    .sci-legend-item { display: inline-flex; align-items: center; margin-right: 8px; font-size: 10px; }
+    #sciencePanelWrap { background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; margin-top: 5px; }
+    #scienceTitle { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-blue); font-weight: bold; margin-bottom: 8px; text-align: center; }
+    #scienceCanvas { width: 100%; height: 160px; display: block; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-bottom: 5px;}
+    #scienceStats { font-size: 11px; color: var(--text-muted); line-height: 1.4; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .sci-legend-item { display: inline-flex; align-items: center; font-size: 10px; }
     .sci-legend-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+
+    /* Spectroscopy Panel */
+    #spectroscopy-panel {
+      position: absolute; bottom: 20px; right: 280px; width: 480px; height: 280px;
+      background: rgba(13, 17, 23, 0.95); border: 1px solid var(--border-color); border-radius: 12px;
+      display: none; flex-direction: column; z-index: 100;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.9); pointer-events: none; backdrop-filter: blur(8px);
+      transition: right 0.3s ease; 
+    }
+    body.drawer-collapsed #sim-container #spectroscopy-panel { right: 20px; }
+    body.presentation-mode #spectroscopy-panel { right: 20px; }
+
+    #spec-header {
+      background: rgba(255,255,255,0.03); padding: 12px 16px; border-bottom: 1px solid var(--border-color);
+      display: flex; justify-content: space-between; align-items: center; border-radius: 12px 12px 0 0;
+    }
+    .spec-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--accent-blue); }
+    #spec-target-name { font-size: 11px; color: var(--text-muted); background: rgba(0,0,0,0.5); padding: 3px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
+    #spec-canvas-container { flex: 1; padding: 10px; position: relative; }
+    #spectrumCanvas { width: 100%; height: 100%; display: block; }
     
-    label { display: block; margin: 10px 0 5px 0; font-size: 13px; color: #ddd; }
-    #instrumentDesc { font-size: 11px; color: #88bbff; margin-bottom: 10px; font-style: italic; }
-    input[type="range"] { width: 100%; box-sizing: border-box; margin-bottom: 5px; }
-    select, button { width: 100%; box-sizing: border-box; padding: 8px; margin: 5px 0 10px 0; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;}
-    button { cursor: pointer; font-weight: bold; transition: background 0.2s; } button:hover { background: #555; }
-    .btn-warp { background: #6200ea; border-color: #8e24aa; } .btn-warp:hover { background: #7c4dff; }
-    .btn-clear { background: #b71c1c; border-color: #d32f2f; margin-top: 5px;} .btn-clear:hover { background: #e53935; }
-    .btn-director { background: #00838f; border-color: #006064; } .btn-director:hover { background: #00acc1; }
-    .btn-sci { background: #2e7d32; border-color: #1b5e20; } .btn-sci:hover { background: #388e3c; }
-    .btn-record { background: #d84315; border-color: #c62828; } .btn-record:hover { background: #e64a19; }
-    .checkbox-label { margin: 6px 0; font-size: 12px; display: flex; align-items: center; color: #ccc; }
-    .checkbox-label input { margin-right: 8px; }
-    .status-badge { animation: blink 1.5s infinite; }
-    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    .status-badge { animation: blink 1.5s infinite; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-red); color: #fca5a5; padding: 4px; border-radius: 4px; }
   </style>
 </head>
-<body>
+<body class="drawer-collapsed">
+  
+  <!-- MAIN SIMULATION SIDEBAR -->
   <div id="controls">
     
+    <!-- Quick Controls Group -->
+    <div class="control-group">
+      <div class="group-header">Main Controls <span class="group-toggle">−</span></div>
+      <div class="group-content">
+        <button id="pauseSim" class="btn-primary">⏸ Pause Simulation</button>
+        <button id="timeWarpBtn" class="btn-purple">⏩ Fast Forward (+100 Myr)</button>
+        <div style="display:flex; gap:5px;">
+            <button id="restartSim" class="btn-danger" style="flex:1;">↺ Restart</button>
+            <button id="btnPresentation" class="btn-warning" style="flex:1; color:#000;">📺 Present</button>
+        </div>
+        
+        <label for="speed">Sim Speed: <span id="speedValue">1x</span></label>
+        <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1">
+        
+        <label for="galaxyTypePreset">Galaxy Architecture:</label>
+        <select id="galaxyTypePreset">
+            <option value="spiral-2" selected>Spiral (2-Arm)</option>
+            <option value="spiral-6">Spiral (6-Arm)</option>
+            <option value="ring">Ring Galaxy</option>
+            <option value="disc">Disc Galaxy</option>
+        </select>
+        
+        <label for="galaxyStage">Initial Age Epoch:</label>
+        <select id="galaxyStage">
+            <option value="new">New (Gas Rich)</option>
+            <option value="adult" selected>Adult (Balanced)</option>
+            <option value="dying">Dying (Depleted)</option>
+        </select>
+        <div class="help-text text-warning">Applies on restart.</div>
+      </div>
+    </div>
+
+    <!-- Science Panels -->
     <div class="control-group">
       <div class="group-header">Science Panels <span class="group-toggle">−</span></div>
       <div class="group-content">
         <select id="sciPanelSelect">
-            <option value="rotationCurve" selected>Rotation Curve</option>
+            <option value="rotationCurve" selected>Mass & Rotation Curve</option>
             <option value="sfr">Star Formation History</option>
-            <option value="metallicity">Metallicity Gradient</option>
+            <option value="metallicity">Radial Chemical Gradient</option>
             <option value="gasPhases">Gas Phase Breakdown</option>
-            <option value="bhAccretion">BH Fueling History</option>
+            <option value="bhAccretion">Central BH Fueling</option>
         </select>
-        <select id="sciUpdateMode">
-            <option value="live">Live Update</option>
-            <option value="paused">Paused Only</option>
-        </select>
-        <button id="sciForceUpdate" class="btn-sci">Force Refresh</button>
+        <div style="display:flex; gap:5px;">
+            <select id="sciUpdateMode" style="flex:2; margin-bottom:0;">
+                <option value="live">Live Update</option>
+                <option value="paused">Paused Only</option>
+            </select>
+            <button id="sciForceUpdate" class="btn-success" style="flex:1; margin:0;">Refresh</button>
+        </div>
         <div id="sciencePanelWrap">
+          <div id="scienceTitle">Mass & Rotation Curve</div>
           <canvas id="scienceCanvas"></canvas>
           <div id="scienceStats"></div>
         </div>
       </div>
     </div>
 
+    <!-- Observation Camera -->
     <div class="control-group">
-      <div class="group-header">Observation Camera <span class="group-toggle">+</span></div>
-      <div class="group-content collapsed">
+      <div class="group-header">Observation Camera <span class="group-toggle">−</span></div>
+      <div class="group-content">
         <label for="observationFilter">Instrument / Filter:</label>
         <select id="observationFilter">
-            <option value="visible" selected>Visible Light</option>
-            <option value="infrared">Infrared</option>
-            <option value="ultraviolet">Ultraviolet</option>
-            <option value="xray">X-Ray</option>
-            <option value="spectroscopy">Spectroscopy</option>
+            <option value="visible" selected>Visible Light (Optical)</option>
+            <option value="infrared">Infrared (Dust Pen.)</option>
+            <option value="ultraviolet">Ultraviolet (Young Stars)</option>
+            <option value="xray">X-Ray (High Energy)</option>
+            <option value="spectroscopy">Spectroscopy Tool</option>
         </select>
-        <div id="instrumentDesc">Optical imaging with dust extinction and diffraction.</div>
+        <div class="help-text" id="instrumentDesc">Optical imaging with dust extinction and diffraction.</div>
         
-        <label for="exposureSlider">Exposure/Integration: <span id="exposureValue">1.0x</span></label>
+        <label for="exposureSlider">Sensor Gain: <span id="exposureValue">1.0x</span></label>
         <input type="range" id="exposureSlider" min="0.1" max="5.0" step="0.1" value="1.0">
         
-        <div style="margin-top:10px; border-top:1px solid #333; padding-top:5px;">
-          <label class="checkbox-label"><input type="checkbox" id="tglRealism" checked> Instrument Realism</label>
+        <div style="margin-top:10px; border-top:1px solid var(--border-color); padding-top:5px;">
+          <label class="checkbox-label"><input type="checkbox" id="tglRealism" checked> <strong>Master Instrument Realism</strong></label>
+          <div class="help-text" style="margin-bottom:4px;">Disabling this turns off all observational physics overlays.</div>
           <label class="checkbox-label"><input type="checkbox" id="tglNoise" checked> Detector Noise</label>
           <label class="checkbox-label"><input type="checkbox" id="tglDiffraction" checked> Diffraction Spikes</label>
           <label class="checkbox-label"><input type="checkbox" id="tglBloom" checked> Sensor Bloom</label>
@@ -167,92 +285,82 @@
       </div>
     </div>
 
-    <div class="control-group">
-      <div class="group-header">Simulation Physics <span class="group-toggle">+</span></div>
-      <div class="group-content collapsed">
-        <label for="speed">Simulation Speed: <span id="speedValue">1x</span></label>
-        <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1">
-        
-        <label for="mass">Central BH Mass: <span id="massValue">100</span></label>
-        <input type="range" id="mass" min="50" max="500" step="50" value="100">
-        
-        <label for="starCount">Max Capacity (Stars): <span id="starCountValue">25000</span></label>
-        <input type="range" id="starCount" min="5000" max="250000" step="5000" value="25000">
-        
-        <label for="gasAmount">Gas Amount: <span id="gasAmountValue">100%</span></label>
-        <input type="range" id="gasAmount" min="0.1" max="8.0" step="0.1" value="1.0">
-        
-        <label for="inflowRate">Cosmic Gas Inflow: <span id="inflowRateValue">10 M☉/yr</span></label>
-        <input type="range" id="inflowRate" min="0" max="50" step="1" value="10">
-      </div>
-    </div>
-
-    <div class="control-group">
-      <div class="group-header">Galaxy Generation <span class="group-toggle">+</span></div>
-      <div class="group-content collapsed">
-        <label for="galaxyStage">Galaxy Age:</label>
-        <select id="galaxyStage">
-            <option value="new">New</option>
-            <option value="adult" selected>Adult</option>
-            <option value="dying">Dying</option>
-        </select>
-        <label for="galaxyTypePreset">Galaxy Type:</label>
-        <select id="galaxyTypePreset">
-            <option value="spiral-2" selected>Spiral (2-Arm)</option>
-            <option value="spiral-6">Spiral (6-Arm)</option>
-            <option value="ring">Ring Galaxy</option>
-            <option value="disc">Disc Galaxy</option>
-        </select>
-        <button id="restartSim">Restart Simulation</button>
-        <button id="timeWarpBtn" class="btn-warp">Fast Forward (+100 Myr)</button>
-      </div>
-    </div>
-
+    <!-- Director & Astrometry -->
     <div class="control-group">
       <div class="group-header">Director & Astrometry <span class="group-toggle">+</span></div>
       <div class="group-content collapsed">
-        <button id="pauseSim">Pause/Resume Simulation</button>
-        <button id="directorModeBtn" class="btn-director">Toggle Director Mode</button>
+        <button id="directorModeBtn" style="background:var(--bg-header);">Toggle Cinematic Track</button>
         <label for="chaseZoomSlider">Chase Cam Zoom: <span id="chaseZoomValue">18.0x</span></label>
         <input type="range" id="chaseZoomSlider" min="1.0" max="25.0" step="0.1" value="18.0">
-        <button id="clearTargetsBtn" class="btn-clear">Clear Astrometry Targets</button>
+        <button id="clearTargetsBtn" class="btn-danger" style="margin-top:10px;">Clear Astrometry Targets</button>
+      </div>
+    </div>
+
+    <!-- Simulation Physics -->
+    <div class="control-group">
+      <div class="group-header">Core Physics Variables <span class="group-toggle">+</span></div>
+      <div class="group-content collapsed">
+        <label for="inflowRate">Cosmic Gas Inflow: <span id="inflowRateValue">10 M☉/yr</span></label>
+        <input type="range" id="inflowRate" min="0" max="50" step="1" value="10">
+        <div class="help-text">Feeds pristine cold gas into the outer galaxy to sustain star formation over cosmic time. Live variable.</div>
+        
+        <hr style="border-top:1px solid var(--border-color); border-bottom:none; margin:10px 0;">
+        <div class="help-text text-warning" style="text-align:center;">Below applies on restart</div>
+        
+        <label for="mass">Initial BH Seed Mass: <span id="massValue">100</span> M☉</label>
+        <input type="range" id="mass" min="50" max="500" step="50" value="100">
+        
+        <label for="starCount">Particle Capacity: <span id="starCountValue">25000</span></label>
+        <input type="range" id="starCount" min="5000" max="250000" step="5000" value="25000">
+        
+        <label for="gasAmount">Initial Gas Multiplier: <span id="gasAmountValue">100%</span></label>
+        <input type="range" id="gasAmount" min="0.1" max="8.0" step="0.1" value="1.0">
       </div>
     </div>
     
+    <!-- Visual Overrides -->
     <div class="control-group">
       <div class="group-header">Visual Overrides <span class="group-toggle">+</span></div>
       <div class="group-content collapsed">
-        <label for="hotGasBrightness">Hot Gas Appearance (-1 to 3): <span id="hotGasBrightnessValue">0</span></label>
+        <label for="hotGasBrightness">Hot Gas Lum. Bias: <span id="hotGasBrightnessValue">0</span></label>
         <input type="range" id="hotGasBrightness" min="-1" max="3" step="0.1" value="0">
         
-        <label for="coldGasBrightness">Cold Gas Appearance (-1 to 3): <span id="coldGasBrightnessValue">0</span></label>
+        <label for="coldGasBrightness">Cold Gas Appearance: <span id="coldGasBrightnessValue">0</span></label>
         <input type="range" id="coldGasBrightness" min="-1" max="3" step="0.1" value="0">
 
-        <label for="dustBrightness">Dust Appearance (-1 to 3): <span id="dustBrightnessValue">0</span></label>
+        <label for="dustBrightness">Dust Opacity Bias: <span id="dustBrightnessValue">0</span></label>
         <input type="range" id="dustBrightness" min="-1" max="3" step="0.1" value="0">
         
-        <label for="starScale">Star Size (-1 to 3): <span id="starScaleValue">0</span></label>
+        <label for="starScale">Star Size Scaling: <span id="starScaleValue">0</span></label>
         <input type="range" id="starScale" min="-1" max="3" step="0.1" value="0">
         
-        <div style="margin-top:15px; border-top:1px solid #333; padding-top:10px;">
-          <label class="checkbox-label"><input type="checkbox" id="tglHDR" checked> HDR "Sunglasses" (Prevent Blowout)</label>
-          <label class="checkbox-label"><input type="checkbox" id="realisticColors" checked> Authentic Colors</label>
-          <label class="checkbox-label"><input type="checkbox" id="leapfrogPhysics" checked> Leapfrog Physics</label>
-          <label class="checkbox-label"><input type="checkbox" id="showDarkMatter" checked> Show Dark Matter Halo</label>
+        <div style="margin-top:15px; border-top:1px solid var(--border-color); padding-top:10px;">
+          <label class="checkbox-label"><input type="checkbox" id="tglHDR" checked> HDR Compression</label>
+          <div class="help-text">Prevents sensor blowout in dense core regions.</div>
+          
+          <label class="checkbox-label"><input type="checkbox" id="realisticColors" checked> Authentic Planck Colors</label>
+          
+          <label class="checkbox-label"><input type="checkbox" id="leapfrogPhysics" checked> Leapfrog Integrator</label>
+          <div class="help-text">Uses a more stable orbital integration method for particles.</div>
+          
           <label class="checkbox-label"><input type="checkbox" id="enableClusters" checked> Enable Clusters</label>
-          <label class="checkbox-label"><input type="checkbox" id="showJets" checked> Show Jets/Quasars</label>
-          <label class="checkbox-label"><input type="checkbox" id="showGrid" checked> Show Distance Grid</label>
-          <label class="checkbox-label"><input type="checkbox" id="showStreaks" checked> Show Streaks</label>
+          <div class="help-text">Generates dense stellar grouping in initial generation. Applies on restart.</div>
+          
+          <label class="checkbox-label"><input type="checkbox" id="showDarkMatter" checked> Show Dark Matter Halo</label>
+          <label class="checkbox-label"><input type="checkbox" id="showJets" checked> Show AGN Outflows</label>
+          <label class="checkbox-label"><input type="checkbox" id="showGrid" checked> Show Reference Grid</label>
+          <label class="checkbox-label"><input type="checkbox" id="showStreaks" checked> Show Orbital Streaks</label>
         </div>
       </div>
     </div>
 
+    <!-- Export & Snapshots -->
     <div class="control-group">
-      <div class="group-header">Export & Snapshots <span class="group-toggle">+</span></div>
+      <div class="group-header">Export & Automation <span class="group-toggle">+</span></div>
       <div class="group-content collapsed">
-        <label class="checkbox-label" style="margin-bottom:10px; color:#fff;"><input type="checkbox" id="multiAngleScreenshot"> Multi-Angle Pack</label>
+        <label class="checkbox-label" style="margin-bottom:10px;"><input type="checkbox" id="multiAngleScreenshot"> Multi-Angle Pack</label>
         
-        <label for="parallelInstrument">Parallel Instrument:</label>
+        <label for="parallelInstrument">Parallel Capture Filter:</label>
         <select id="parallelInstrument">
             <option value="none" selected>None</option>
             <option value="visible">Visible Light</option>
@@ -261,43 +369,63 @@
             <option value="xray">X-Ray</option>
         </select>
 
-        <label for="screenshotScale">Screenshot Resolution:</label>
+        <label for="screenshotScale">Capture Resolution:</label>
         <select id="screenshotScale">
             <option value="1" selected>1x (Standard)</option>
-            <option value="2">2x (High Res 4K)</option>
-            <option value="4">4x (Ultra Res 8K)</option>
+            <option value="2">2x (4K High Res)</option>
+            <option value="4">4x (8K Ultra Res)</option>
         </select>
         
-        <button id="takeScreenshot">Take Manual Screenshot</button>
+        <button id="takeScreenshot" class="btn-warning">📸 Take Manual Snapshot</button>
 
-        <div style="margin-top:15px; border-top:1px solid #333; padding-top:10px;">
-            <label for="autoCaptureInterval">Auto-Capture Interval:</label>
+        <div style="margin-top:15px; border-top:1px solid var(--border-color); padding-top:10px;">
+            <label for="autoCaptureInterval">Timelapse Automation:</label>
             <select id="autoCaptureInterval">
                 <option value="0" selected>Off</option>
-                <option value="1">Every 1 Update</option>
-                <option value="10">Every 10 Updates</option>
-                <option value="100">Every 100 Updates</option>
+                <option value="1">Record Every 1 Step</option>
+                <option value="10">Record Every 10 Steps</option>
+                <option value="100">Record Every 100 Steps</option>
             </select>
-            <div id="autoCaptureStatus" style="font-size:12px; color:#ff6666; font-weight:bold; display:none; margin-top:8px; text-align:center;" class="status-badge">🔴 AUTO-REC ACTIVE</div>
+            <div id="autoCaptureStatus" class="status-badge" style="display:none; margin-top:8px; text-align:center;">🔴 TIMELAPSE ACTIVE</div>
         </div>
         
-        <div style="margin-top:15px; border-top:1px solid #333; padding-top:10px;">
-            <button id="recordDataBtn">Start Data Recording</button>
-            <div id="recordStatus" style="font-size:11px; color:#ccc; text-align:center; display:none; margin-top:5px;">Recording... (0 rows)</div>
+        <div style="margin-top:15px; border-top:1px solid var(--border-color); padding-top:10px;">
+            <button id="recordDataBtn">Start CSV Data Log</button>
+            <div id="recordStatus" style="font-size:11px; color:var(--text-muted); text-align:center; display:none; margin-top:5px;">Recording... (0 rows)</div>
         </div>
       </div>
     </div>
 
   </div>
 
+  <!-- MAIN SIMULATION CANVAS AND PANELS -->
   <div id="sim-container">
+    <button id="exitPresentationBtn">Exit Presentation (Esc)</button>
+
+    <!-- TELEMETRY HUD -->
+    <div id="hud">
+      <div class="hud-card"><div class="hud-label">Time Elapsed</div><div class="hud-value" id="hud-time">0 yr</div></div>
+      <div class="hud-card"><div class="hud-label">Sim Status</div><div class="hud-value val-cool" id="hud-phase">Running</div></div>
+      <div class="hud-card"><div class="hud-label">Star Formation</div><div class="hud-value" id="hud-sfr">0 M☉/Myr</div></div>
+      <div class="hud-card"><div class="hud-label">Central BH Mass</div><div class="hud-value val-active" id="hud-bh">0 M☉</div></div>
+      <div class="hud-card"><div class="hud-label">Cold Gas Res.</div><div class="hud-value val-cool" id="hud-gas">0%</div></div>
+      <div class="hud-card"><div class="hud-label">Zoom Scale</div><div class="hud-value" id="hud-scale">1000 pc</div></div>
+    </div>
+
+    <!-- CONTEXTUAL HINT -->
+    <div id="interactionHint">Wheel = zoom, drag = pan, right drag = rotate</div>
+
     <canvas id="simulation"></canvas>
     <canvas id="overlay-canvas"></canvas>
+    
+    <!-- ASTROMETRY POPUP -->
     <div id="starPopup"></div>
+    
+    <!-- SPECTROSCOPY PANEL -->
     <div id="spectroscopy-panel">
         <div id="spec-header">
-            <span>Synthetic Spectrum Analysis</span>
-            <span id="spec-target-name" style="font-weight:normal; font-size:11px; opacity:0.8;">No Target</span>
+            <span class="spec-title">Spectral Analysis</span>
+            <span id="spec-target-name">No Target</span>
         </div>
         <div id="spec-canvas-container">
             <canvas id="spectrumCanvas"></canvas>
@@ -305,13 +433,14 @@
     </div>
   </div>
   
-  <div id="snapshots"><h3>Snapshots</h3><div id="snapshotList"></div></div>
-
-  <div id="scale">Scale: 1000 pc</div>
-  <div id="timer">Time: 0 years</div>
-  <div id="stability">Stability: 0</div>
-  <div id="energy">Total Energy: 0</div>
-  <div id="epoch">Epoch: Calculating...</div>
+  <!-- COLLAPSIBLE SNAPSHOT DRAWER -->
+  <div id="snapshots-wrapper" class="collapsed">
+      <div id="snapshot-toggle-btn">◀</div>
+      <div id="snapshots">
+          <h3>Capture Gallery</h3>
+          <div id="snapshotList"></div>
+      </div>
+  </div>
 
   <script>
     const glCanvas=document.getElementById('simulation');const gl=glCanvas.getContext('webgl',{preserveDrawingBuffer:true,antialias:true});
@@ -323,7 +452,7 @@
     
     glCanvas.style.cursor = "default";
     
-    // UI Panels
+    // UI Panel Accordions
     document.querySelectorAll('.group-header').forEach(header => {
         header.addEventListener('click', () => {
             const content = header.nextElementSibling;
@@ -336,6 +465,52 @@
         });
     });
 
+    // Snapshot Drawer Toggle
+    const snapWrapper = document.getElementById('snapshots-wrapper');
+    const snapToggleBtn = document.getElementById('snapshot-toggle-btn');
+    snapToggleBtn.addEventListener('click', () => {
+        snapWrapper.classList.toggle('collapsed');
+        document.body.classList.toggle('drawer-collapsed');
+        snapToggleBtn.textContent = snapWrapper.classList.contains('collapsed') ? '◀' : '▶';
+    });
+
+    // Presentation Mode
+    const btnPresentation = document.getElementById('btnPresentation');
+    const exitPresentationBtn = document.getElementById('exitPresentationBtn');
+    
+    function togglePresentationMode() {
+        document.body.classList.toggle('presentation-mode');
+        if(document.body.classList.contains('presentation-mode')) {
+            if (!document.body.classList.contains('drawer-collapsed')) {
+                snapWrapper.classList.add('collapsed');
+                document.body.classList.add('drawer-collapsed');
+                snapToggleBtn.textContent = '◀';
+            }
+            updateInteractionHint();
+        } else {
+            updateInteractionHint(); 
+        }
+        setTimeout(onResize, 350); 
+    }
+    
+    btnPresentation.addEventListener('click', togglePresentationMode);
+    exitPresentationBtn.addEventListener('click', () => {
+        document.body.classList.remove('presentation-mode');
+        updateInteractionHint();
+        setTimeout(onResize, 350);
+    });
+    
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.body.classList.contains('presentation-mode')) {
+            document.body.classList.remove('presentation-mode');
+            updateInteractionHint();
+            setTimeout(onResize, 350);
+        } else if (e.key === 'p' || e.key === 'P') {
+            togglePresentationMode();
+        }
+    });
+
+    // --- SCIENCE STATE & LIVE MASS MODEL ---
     const scienceState = {
         enabled: true,
         selectedPanel: 'rotationCurve',
@@ -457,9 +632,22 @@
         return neighbors;
     }
 
-    document.getElementById('sciPanelSelect').addEventListener('change', (e) => { scienceState.selectedPanel = e.target.value; updateSciencePanels(true); });
+    const sciTitles = {
+        "rotationCurve": "Mass & Rotation Curve",
+        "sfr": "Star Formation Through Time",
+        "metallicity": "Radial Chemical Enrichment",
+        "gasPhases": "Cold vs Hot Gas Reservoir",
+        "bhAccretion": "Central Black Hole Fueling"
+    };
+
+    document.getElementById('sciPanelSelect').addEventListener('change', (e) => { 
+        scienceState.selectedPanel = e.target.value; 
+        document.getElementById('scienceTitle').textContent = sciTitles[e.target.value];
+        sampleDiagnostics();
+        updateSciencePanels(true); 
+    });
     document.getElementById('sciUpdateMode').addEventListener('change', (e) => { scienceState.updateMode = e.target.value; });
-    document.getElementById('sciForceUpdate').addEventListener('click', () => updateSciencePanels(true));
+    document.getElementById('sciForceUpdate').addEventListener('click', () => { sampleDiagnostics(); updateSciencePanels(true); });
 
     let astrometryTargets = [];      
     let spectroscopyTarget = null;   
@@ -467,6 +655,23 @@
     let projectedOrbitPath = [];
 
     function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    function updateInteractionHint() {
+        if (document.body.classList.contains('presentation-mode')) return;
+        const hintEl = document.getElementById('interactionHint');
+        if (isDirectorMode) {
+            hintEl.textContent = "Cinematic Track Active: Drag canvas to exit manual lock.";
+        } else if (isPaused) {
+            if (currentModeId === 'spectroscopy') {
+                hintEl.textContent = "Spectroscopy: Click a star to analyze. Shift+Click for astrometry.";
+            } else {
+                hintEl.textContent = "Analysis Mode: Click a star to inspect. Click a second for relative astrometry.";
+            }
+        } else {
+            hintEl.textContent = "Camera: Wheel to zoom, drag to pan, right-click drag to rotate.";
+        }
+        hintEl.style.opacity = '1';
+    }
 
     function refreshAnalysisUI() {
         const specPanel = document.getElementById('spectroscopy-panel');
@@ -476,6 +681,8 @@
         specPanel.style.display = hasSpecTarget ? 'flex' : 'none';
 
         if (!astrometryTargets.length) { popup.style.display = 'none'; }
+        
+        updateInteractionHint();
     }
 
     function resizeSpecCanvas() {
@@ -538,16 +745,16 @@
     document.getElementById('realisticColors').addEventListener('change',(e)=>{useRealisticColors=e.target.checked;});
     document.getElementById('leapfrogPhysics').addEventListener('change',(e)=>{useLeapfrog=e.target.checked;});
     document.getElementById('showDarkMatter').addEventListener('change',(e)=>{showDarkMatter=e.target.checked;});
-    document.getElementById('enableClusters').addEventListener('change',(e)=>{enableClusters=e.target.checked;initSimulation();});
+    document.getElementById('enableClusters').addEventListener('change',(e)=>{initSimulation();});
     document.getElementById('showJets').addEventListener('change',(e)=>{showJets=e.target.checked;if(!showJets)jetParticles=[];});
     document.getElementById('showGrid').addEventListener('change',(e)=>{showGrid=e.target.checked;});
     document.getElementById('showStreaks').addEventListener('change',(e)=>{showStreaks=e.target.checked;});
 
-    let frameCount=0; let snapshots=[];
+    let frameCount=0;
     let jetParticles=[],blackHoles=[],stars=[],gasClouds=[],remnants=[];let isPaused=false;
     let isDirectorMode=false; let trackingTarget = null;
     let chaseCamZoomTarget = 18.0;
-    let showDarkMatter=true,enableClusters=true,showJets=true,showGrid=true,showStreaks=true;
+    let showDarkMatter=true,showJets=true,showGrid=true,showStreaks=true;
     let useRealisticColors = true, useLeapfrog = true;
 
     let isDataRecording = false;
@@ -591,7 +798,6 @@
     const k = 5 / Math.pow(10, 1/3);
     const MASSIVE_STAR_THRESHOLD = 8.0; 
     const SUPERNOVA_RADIUS = 50; const SUPERNOVA_FORCE = 1.5; const SUPERNOVA_ENRICHMENT = 0.5;
-    const BASE_LIFETIME_YEARS = 10e9; 
     
     let dragStartX = 0, dragStartY = 0;
     let currentMouseX = -1000, currentMouseY = -1000;
@@ -609,7 +815,6 @@
         "spiral-6": { name: "Spiral (6-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.8, armCount: 6, armFraction: 0.6, gasConcentration: 0.9, thickness: 20 },
         "disc": { name: "Disc Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.5, armCount: 0, armFraction: 0, gasConcentration: 0.2, thickness: 10 }
     };
-    const stagePressureParams = { new: { maxNormal: 100 }, adult: { maxNormal: 20 }, dying: { maxNormal: 10 } };
     
     const speedSlider=document.getElementById('speed'), speedValue=document.getElementById('speedValue');
     const massSlider=document.getElementById('mass'), massValue=document.getElementById('massValue');
@@ -619,7 +824,6 @@
     const timeWarpBtn = document.getElementById('timeWarpBtn');
     const takeScreenshotButton=document.getElementById('takeScreenshot');
     const pauseSimButton = document.getElementById('pauseSim'), galaxyStageSelect=document.getElementById('galaxyStage'), galaxyTypePresetSelect=document.getElementById('galaxyTypePreset');
-    const timerElement=document.getElementById('timer');
     const clearTargetsBtn = document.getElementById('clearTargetsBtn');
     const directorModeBtn = document.getElementById('directorModeBtn');
     const chaseZoomSlider = document.getElementById('chaseZoomSlider');
@@ -656,10 +860,11 @@
       attribute vec3 aPosition; attribute float aSize; attribute float aType; attribute vec4 aColor; 
       uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize; 
       uniform float uRotX; uniform float uRotY; uniform float uIs3D; uniform float uIsOrtho; 
-      varying vec4 vColor; varying float vType; varying float vPitch;
+      varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize;
       void main(){
         vec2 p; float finalSize = aSize * uScale;
         vPitch = max(abs(cos(uRotX)), 0.15); 
+        vSize = aSize;
         if (uIs3D > 0.5) {
             float cosY = cos(uRotY); float sinY = sin(uRotY); float x1 = aPosition.x * cosY + aPosition.z * sinY; float z1 = -aPosition.x * sinY + aPosition.z * cosY;
             float cosX = cos(uRotX); float sinX = sin(uRotX); float y2 = aPosition.y * cosX - z1 * sinX; float z2 = aPosition.y * sinX + z1 * cosX;
@@ -671,7 +876,7 @@
       }`;
     
     const fsSource=`
-      precision mediump float; varying vec4 vColor; varying float vType; varying float vPitch; 
+      precision mediump float; varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize;
       uniform float uExposure; uniform float uTime; uniform float uHDR;
       uniform float uPSFCore; uniform float uPSFHalo; 
       uniform float uBloom; uniform float uDiffraction; uniform float uSparse;
@@ -689,13 +894,8 @@
             finalAlpha = 1.0; 
         } else {
             float core = exp(-d * d * uPSFCore); float halo = exp(-d * d * uPSFHalo);
-            if(vType == 6.0 && uDiffraction > 0.0) {
-                float spikeX = exp(-abs(c.x)*150.0) * exp(-abs(c.y)*20.0);
-                float spikeY = exp(-abs(c.y)*150.0) * exp(-abs(c.x)*20.0);
-                float spikes = (spikeX + spikeY) * uDiffraction;
-                finalRGB = mix(vColor.rgb, vec3(1.0), core * 0.8) * (1.0 + halo + spikes*2.5);
-                finalAlpha = (core + halo*0.4 + spikes*0.8) * vColor.a;
-            } else if (vType == 2.0) {
+            
+            if (vType == 2.0) {
                 vec2 diskCoord = vec2(c.x, c.y / vPitch); float diskDist = length(diskCoord);
                 float ehMask = smoothstep(0.08, 0.14, d); float photonRing = exp(-pow(d - 0.12, 2.0) * 400.0) * 2.0; 
                 float beaming = 1.0 - smoothstep(-0.5, 0.5, c.x);
@@ -709,8 +909,23 @@
                 float ring = smoothstep(0.3, 0.45, d) - smoothstep(0.45, 0.5, d);
                 float innerGlow = exp(-d * d * 15.0) * 0.15;
                 finalAlpha = (ring + innerGlow) * vColor.a;
+            } else if (vType == 0.0 || vType == 6.0) {
+                float spikeStrength = smoothstep(4.0, 12.0, vSize);
+                if(spikeStrength > 0.0 && uDiffraction > 0.0) {
+                    float spikeX = exp(-abs(c.x)*150.0) * exp(-abs(c.y)*20.0);
+                    float spikeY = exp(-abs(c.y)*150.0) * exp(-abs(c.x)*20.0);
+                    float spikes = (spikeX + spikeY) * uDiffraction * spikeStrength;
+                    vec3 starCol = mix(vColor.rgb, vec3(1.0), core * 0.6);
+                    finalRGB = starCol * (1.0 + halo + spikes*3.0);
+                    finalAlpha = (core + halo*0.5 + spikes) * vColor.a;
+                } else {
+                    vec3 starCol = mix(vColor.rgb, vec3(1.0), core * 0.5); 
+                    finalRGB = starCol * (1.0 + halo);
+                    finalAlpha = (core + halo * 0.5) * vColor.a;
+                }
             } else {
-                vec3 starCol = mix(vColor.rgb, vec3(1.0), core * 0.5); finalRGB = starCol * (1.0 + halo);
+                vec3 baseCol = mix(vColor.rgb, vec3(1.0), core * 0.3); 
+                finalRGB = baseCol * (1.0 + halo * 0.5);
                 finalAlpha = (core + halo * 0.5) * vColor.a;
             }
         }
@@ -755,6 +970,7 @@
       glCanvas.width=overlayCanvas.width=w; glCanvas.height=overlayCanvas.height=h; centerX=w/2; centerY=h/2; pcPerPixel=totalSizePc/w; gl.viewport(0,0,w,h);
       sciCanvas.width = sciCanvas.parentElement.clientWidth - 16;
       resizeSpecCanvas();
+      sampleDiagnostics();
       updateSciencePanels(true);
     }
 
@@ -783,7 +999,7 @@
         const status = document.getElementById('recordStatus');
         
         if (isDataRecording) {
-            btn.textContent = "Stop Data Recording";
+            btn.textContent = "⏹ Stop Data Recording";
             btn.classList.add("btn-record");
             dataRecordBuffer = [];
             dataRecordPart = 1;
@@ -1014,7 +1230,7 @@
         const chartW = w - padL - padR, chartH = h - padT - padB;
 
         sciCtx.clearRect(0,0,w,h);
-        sciCtx.strokeStyle = '#555'; sciCtx.lineWidth = 1;
+        sciCtx.strokeStyle = 'rgba(255,255,255,0.1)'; sciCtx.lineWidth = 1;
         sciCtx.beginPath(); sciCtx.moveTo(padL, padT); sciCtx.lineTo(padL, h-padB); sciCtx.lineTo(w-padR, h-padB); sciCtx.stroke();
 
         datasets.forEach(ds => {
@@ -1030,14 +1246,14 @@
             sciCtx.stroke();
         });
 
-        sciCtx.fillStyle = '#888'; sciCtx.font = '10px Arial';
-        sciCtx.textAlign='right'; sciCtx.fillText(maxY.toFixed(1), padL-4, padT+6);
+        sciCtx.fillStyle = '#94a3b8'; sciCtx.font = '9px Arial';
+        sciCtx.textAlign='right'; sciCtx.fillText(maxY.toExponential(1), padL-4, padT+6);
         sciCtx.fillText('0', padL-4, h-padB);
         sciCtx.textAlign='center'; sciCtx.fillText(maxX.toFixed(0), w-padR, h-padB+12);
         sciCtx.textAlign='left'; sciCtx.fillText(minX.toFixed(0), padL, h-padB+12);
         
         let legendHtml = datasets.map(ds => `<div class="sci-legend-item"><div class="sci-legend-color" style="background:${ds.color}"></div>${ds.label}</div>`).join('');
-        sciStats.innerHTML = `${legendHtml}<br><div style="margin-top:6px; color:#aaa;"><i>${summaryText}</i></div>`;
+        sciStats.innerHTML = `${legendHtml}<br><div style="margin-top:6px; color:#cbd5e1;"><i>${summaryText}</i></div>`;
     }
 
     function updateSciencePanels(force = false) {
@@ -1049,11 +1265,10 @@
             const d = scienceState.rotationCurve;
             if(!d) return;
             const ds = [
-                { label: 'Model Total', color: '#fff', width: 2, data: d.radii.map((r,i)=>[r, d.modelTotal[i]]) },
-                { label: 'Baryonic', color: '#ffaa66', dash: [4,4], data: d.radii.map((r,i)=>[r, d.modelBaryon[i]]) },
-                { label: 'Dark Matter', color: '#4488ff', dash: [2,2], data: d.radii.map((r,i)=>[r, d.modelDarkMatter[i]]) },
-                { label: 'Obs. Stars', color: '#aaffaa', width: 1.5, data: d.radii.map((r,i)=>[r, d.starMedian[i]]) },
-                { label: 'Obs. Gas', color: '#ff66ff', width: 1.5, data: d.radii.map((r,i)=>[r, d.gasMedian[i]]) }
+                { label: 'Total', color: '#fff', width: 2, data: d.radii.map((r,i)=>[r, d.modelTotal[i]]) },
+                { label: 'Baryonic', color: '#f59e0b', dash: [4,4], data: d.radii.map((r,i)=>[r, d.modelBaryon[i]]) },
+                { label: 'Dark Matter', color: '#3b82f6', dash: [2,2], data: d.radii.map((r,i)=>[r, d.modelDarkMatter[i]]) },
+                { label: 'Obs. Stars', color: '#10b981', width: 1.5, data: d.radii.map((r,i)=>[r, d.starMedian[i]]) }
             ];
             let summary = d.dmDominates ? "Dark matter halo dominates outer disk support." : "Baryons provide majority of outer disk support.";
             drawScienceChart(ds, null, summary);
@@ -1065,7 +1280,7 @@
                 sciStats.innerHTML = "<i>Awaiting star formation events...</i>";
                 return;
             }
-            const ds = [{ label: 'Raw SFR (M☉/Myr)', color: '#ffcc00', width: 1.5, data: h.map(b => [b.tMid, b.sfrMass]) }];
+            const ds = [{ label: 'Raw SFR (M☉/yr)', color: '#f59e0b', width: 1.5, data: h.map(b => [b.tMid, b.sfrMass]) }];
             
             if (h.length > 2) {
                 let smoothed = [];
@@ -1075,7 +1290,7 @@
                     if(i<h.length-1){ sum+=h[i+1].sfrMass; count++; }
                     smoothed.push([h[i].tMid, sum/count]);
                 }
-                ds.push({ label: 'Smoothed', color: '#ff5500', width: 2, data: smoothed });
+                ds.push({ label: 'Smoothed', color: '#ef4444', width: 2, data: smoothed });
             }
             
             let recentSFR = instantaneousSFR;
@@ -1086,9 +1301,9 @@
             const d = scienceState.metallicityGradient;
             if(!d) return;
             const ds = [
-                { label: 'Stars (Z☉)', color: '#aaffaa', width: 2, data: d.radii.map((r,i)=>[r, d.starZ[i]]) },
-                { label: 'Gas (Z☉)', color: '#ff66ff', width: 2, data: d.radii.map((r,i)=>[r, d.gasZ[i]]) },
-                { label: 'Star Fit', color: '#558855', dash:[2,2], width: 1, data: d.radii.map(r=>[r, d.starFit.a + d.starFit.b*r]) }
+                { label: 'Stars (Z☉)', color: '#10b981', width: 2, data: d.radii.map((r,i)=>[r, d.starZ[i]]) },
+                { label: 'Gas (Z☉)', color: '#8b5cf6', width: 2, data: d.radii.map((r,i)=>[r, d.gasZ[i]]) },
+                { label: 'Star Fit', color: '#059669', dash:[2,2], width: 1, data: d.radii.map(r=>[r, d.starFit.a + d.starFit.b*r]) }
             ];
             let summary = d.starFit.b < -0.0001 ? "Negative metallicity gradient (Enriched center)." : "Flat gradient consistent with mixing.";
             drawScienceChart(ds, 3.0, summary); 
@@ -1096,15 +1311,15 @@
             const h = scienceState.gasPhases.history;
             if (h.length === 0) return;
             const ds = [
-                { label: 'Cold Gas (M☉)', color: '#00ccff', width: 2, data: h.map(b => [b.tMid, b.cold]) },
-                { label: 'Hot Gas (M☉)', color: '#ff5555', width: 2, data: h.map(b => [b.tMid, b.hot]) }
+                { label: 'Cold Gas (M☉)', color: '#3b82f6', width: 2, data: h.map(b => [b.tMid, b.cold]) },
+                { label: 'Hot Gas (M☉)', color: '#ef4444', width: 2, data: h.map(b => [b.tMid, b.hot]) }
             ];
             drawScienceChart(ds, null, `Cold Gas Fraction: ${(h.length>0 ? h[h.length-1].fraction*100 : 0).toFixed(1)}%`);
         } else if (scienceState.selectedPanel === 'bhAccretion') {
             const h = scienceState.bhFueling.history;
             if (h.length === 0) return;
             const ds = [
-                { label: 'Accretion (M☉/step)', color: '#ffcc00', width: 2, data: h.map(b => [b.tMid, b.rate]) }
+                { label: 'Accretion (M☉/step)', color: '#f59e0b', width: 2, data: h.map(b => [b.tMid, b.rate]) }
             ];
             drawScienceChart(ds, null, `Current Accretion: ${bhAccretionRateLast.toFixed(4)} M☉/step`);
         }
@@ -1330,7 +1545,6 @@
             for(let n of neighbors) {
                 if (c1.id === n.id || n.mass < 0.5) continue;
                 
-                let pairKey = c1.id < n.id ? c1.id + ":" + n.id : n.id + ":" + c1.id;
                 let dx = c1.x - n.x, dy = c1.y - n.y, dz = c1.z - n.z;
                 let distSq = dx*dx + dy*dy + dz*dz;
                 
@@ -1458,7 +1672,6 @@
             }
 
             bh.radius = Math.max(4.0, baseEventHorizon * bh.mass); 
-            if (frameCount % 10 === 0) { massSlider.value = bh.mass; massValue.textContent = bh.mass.toFixed(1); }
         }
 
         if (showJets && bh && bh.jetTimer > 0) {
@@ -1496,9 +1709,10 @@
           
           const r_cyl = Math.max(0.1, Math.sqrt(cloud.x*cloud.x + cloud.y*cloud.y));
           
-          // --- AMBIENT PRESSURE & COMPRESSION ---
-          let ambientPressure = Math.exp(-Math.abs(cloud.z) / 40.0) * Math.exp(-r_cyl / galaxyRadius);
-          let pressureCompression = 0.5 + ambientPressure; 
+          // --- FIXED GAUSSIAN AMBIENT PRESSURE ---
+          // Creates a steep dropoff outside the galaxy so halo gas expands and starves star formation
+          let ambientPressure = Math.exp(-Math.abs(cloud.z) / 40.0) * Math.exp(-Math.pow(r_cyl / (galaxyRadius * 0.8), 2.0));
+          let pressureCompression = 0.5 + ambientPressure * 1.5; 
           
           let thermalExpansion = cloud.heat < 15 ? 1.0 : 1.0 + Math.min(2.0, cloud.heat / 150.0);
           cloud.size = (k * Math.pow(cloud.mass, 1/3) * thermalExpansion) / pressureCompression;
@@ -1506,7 +1720,6 @@
           let currentVol = Math.max(1, cloud.size * cloud.size * cloud.size);
           let currentRho = (cloud.mass * 100.0) / currentVol;
           
-          // --- GALACTIC FOUNTAIN (Thermal Buoyancy) & HALO COOLING ---
           let thermalBuoyancy = 0;
           if (cloud.heat > 150) {
               thermalBuoyancy = (cloud.heat - 150) * 0.0005; 
@@ -1516,19 +1729,17 @@
           } else {
               cloud.vz -= thermalBuoyancy * dt;
           }
-          cloud.vz *= (1 - 0.05 * dt); // Dampen z-velocity
+          cloud.vz *= (1 - 0.05 * dt);
           
           let verticalIsolation = Math.max(0, (Math.abs(cloud.z) - 100) / 100.0);
           let haloCooling = 1.0 + verticalIsolation;
 
-          // --- THERMODYNAMICS ---
           let densityCoolingMultiplier = Math.min(2.5, Math.max(0.1, currentRho * 0.1));
           let radiativeCooling = Math.max(0.5, cloud.metallicity * 2.0) * densityCoolingMultiplier; 
           let highTempRadiator = 1.0 + Math.pow(cloud.heat / 200.0, 2); 
           
           cloud.heat = Math.max(5, cloud.heat - (cloud.heat * radiativeCooling * highTempRadiator * haloCooling * 0.15 * dt)); 
           
-          // --- SHOCKS & EXTERNAL HEATING ---
           let compression = 1.0;
           if (presetType === "spiral") {
               if (r_cyl > 50 && r_cyl < galaxyRadius) {
@@ -1553,7 +1764,6 @@
               }
           }
           
-          // --- STAR FORMATION (CRITICAL DENSITY THRESHOLD) ---
           cloud.coldFraction = clamp(1.0 - cloud.heat / 50.0, 0.0, 1.0);
           
           const CRITICAL_DENSITY = 5.0; 
@@ -1836,11 +2046,12 @@
             if(star.temperature > 10000){ r=0.6; g=0.7; b=1.0; } else if(star.temperature > 6000){ r=0.9; g=0.95; b=1.0; } else if(star.temperature > 4000){ r=1.0; g=0.9; b=0.6; } else { r=1.0; g=0.5; b=0.2; }
         } else { const pc = getPlanckColor(star.temperature); r=pc[0]; g=pc[1]; b=pc[2]; }
 
+        const useRealism = document.getElementById('tglRealism').checked;
         const dust = getApproxDustDensity(star.x, star.y, star.z);
 
         if (modeId === 'visible') {
-            if (tglDust.checked) { a = baseA * Math.exp(-dust * 1.5); b *= Math.exp(-dust * 2.5); g *= Math.exp(-dust * 1.0); } else { a = baseA; }
-            if (star.initialMass > MASSIVE_STAR_THRESHOLD && star.ageFraction < 0.9) { pType = 6.0; sSize *= 2.0; }
+            if (useRealism && tglDust.checked) { a = baseA * Math.exp(-dust * 1.5); b *= Math.exp(-dust * 2.5); g *= Math.exp(-dust * 1.0); } else { a = baseA; }
+            if (star.initialMass > MASSIVE_STAR_THRESHOLD && star.stage === 'MS') { pType = 6.0; sSize *= 2.0; }
         } else if (modeId === 'infrared') {
             a = baseA * Math.exp(-dust * 0.3); 
             if (star.temperature > 8000) a *= 0.1; 
@@ -1866,21 +2077,34 @@
         let heatRatio = clamp((cloud.heat - 15) / 35, 0.0, 1.0); 
         let visualMult = coldGasVisualMult * (1.0 - heatRatio) + hotGasVisualMult * heatRatio;
 
-        let baseAlpha = (cloud.heat > 50 ? 0.03 : 0.015) * shimmer * visualMult; 
-        let cSize = cloud.size * visualMult * 0.7; 
+        // FIXED: Boosted base visibility of cold gas
+        let baseAlpha = (cloud.heat > 50 ? 0.05 : 0.04) * shimmer * visualMult; 
+        let cSize = cloud.size * visualMult * 0.8; 
         let r=0.0, g=0.8, b=0.9, a=baseAlpha;
+
+        const useRealism = document.getElementById('tglRealism').checked;
+        const dust = getApproxDustDensity(cloud.x, cloud.y, cloud.z);
 
         if (modeId === 'visible') { 
             if (cloud.heat > 50) { r=1.0; g=0.2; b=0.6; a*=1.0; } 
-            else { a*=0.8; } 
+            else { a*=1.4; } // FIXED: Cold gas is no longer aggressively dimmed 
+            
+            // FIXED: Gas is now subjected to dust extinction
+            if (useRealism && tglDust.checked) {
+                a *= Math.exp(-dust * 1.5);
+                b *= Math.exp(-dust * 2.5);
+                g *= Math.exp(-dust * 1.0);
+            }
         } 
         else if (modeId === 'infrared') { 
             if (cloud.heat < 30) { r=1.0; g=0.4; b=0.0; a = (0.05 + cloud.metallicity*0.1) * shimmer * visualMult; } 
             else { a*=0.2; } 
+            if (useRealism && tglDust.checked) a *= Math.exp(-dust * 0.3);
         } 
         else if (modeId === 'ultraviolet') { 
             if (cloud.heat > 40) { r=0.5; g=0.0; b=1.0; a*=1.5; } 
             else { a=0.0; } 
+            if (useRealism && tglDust.checked) a *= Math.exp(-dust * 3.0);
         } 
         else if (modeId === 'xray') { 
             if (cloud.heat > 1000) { r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0); } 
@@ -1897,14 +2121,13 @@
     }
 
     function drawSpectroscopyPanel() {
-        if (currentModeId !== 'spectroscopy') return;
         if (!spectroscopyTarget || !stars.includes(spectroscopyTarget)) {
             if (spectroscopyTarget) { spectroscopyTarget = null; refreshAnalysisUI(); }
             return;
         }
 
         const target = spectroscopyTarget;
-        document.getElementById('spec-target-name').textContent = `Target: Star`;
+        document.getElementById('spec-target-name').textContent = `${getSpectralClass(target.temperature, target.stage)} Type Star`;
 
         const rect = specCanvas.getBoundingClientRect();
         const w = rect.width; const h = rect.height;
@@ -1937,7 +2160,7 @@
         specCtx.fillStyle = '#c9d1d9'; specCtx.font = '11px sans-serif';
         specCtx.textAlign = 'center'; specCtx.textBaseline = 'top';
         const temp = Math.round(target.temperature || 3000);
-        let metaText = `Temp: ${temp} K | Z = ${target.metallicity.toFixed(2)} | Mass = ${target.mass.toFixed(2)} M☉`;
+        let metaText = `Temp: ${temp} K | Z = ${target.metallicity.toFixed(2)} | Mass = ${target.mass.toFixed(2)} M☉ | L = ${target.luminosity.toExponential(1)} L☉`;
         specCtx.fillText(metaText, chartX + chartW/2, 10);
 
         // Grid & Axes
@@ -2003,8 +2226,8 @@
 
         const footerY = chartY + chartH + 40;
         specCtx.fillStyle = '#6e7681'; specCtx.textAlign = 'left'; specCtx.font = '9px monospace';
-        specCtx.fillText(`mode=spectroscopy`, chartX, footerY);
-        specCtx.fillText(`target=yes      samples=320      rawMax=5.18e-14`, chartX, footerY + 12);
+        specCtx.fillText(`instrument=spectrograph`, chartX, footerY);
+        specCtx.fillText(`target=stellar      resolution=R300`, chartX, footerY + 12);
 
         let visGrad = specCtx.createLinearGradient(wlToX(380), 0, wlToX(750), 0);
         visGrad.addColorStop(0.0, '#3b0764'); visGrad.addColorStop(0.2, '#1d4ed8'); visGrad.addColorStop(0.4, '#06b6d4');
@@ -2059,7 +2282,7 @@
             let distSq = target.x*target.x + target.y*target.y + target.z*target.z;
             let dist = Math.sqrt(distSq);
             let dustCol = getApproxDustDensity(target.x, target.y, 0) * (dist / 1000.0); 
-            let extinction = Math.exp(-dustCol * Math.pow(400 / wlRest, 1.3));
+            let extinction = document.getElementById('tglRealism').checked ? Math.exp(-dustCol * Math.pow(400 / wlRest, 1.3)) : 1.0;
 
             let intensity = (baseIntensity - lineDepth) * extinction;
             intensity += (Math.random() - 0.5) * noiseFactor;
@@ -2132,10 +2355,13 @@
           gl.blendFunc(gl.ONE, gl.ONE); 
       }
 
+      const useRealism = document.getElementById('tglRealism').checked;
+
       gl.uniform1f(uExposureLoc, currentExposure); gl.uniform1f(uTimeLoc, frameCount * 0.01);
       gl.uniform1f(uHDRLoc, tglHDR.checked ? 1.0 : 0.0);
       gl.uniform1f(uPSFCoreLoc, currentMode.psfCore); gl.uniform1f(uPSFHaloLoc, currentMode.psfHalo);
-      gl.uniform1f(uBloomLoc, tglBloom.checked ? currentMode.bloomStrength : 0.0); gl.uniform1f(uDiffractionLoc, tglDiffraction.checked ? currentMode.diffraction : 0.0);
+      gl.uniform1f(uBloomLoc, (useRealism && tglBloom.checked) ? currentMode.bloomStrength : 0.0); 
+      gl.uniform1f(uDiffractionLoc, (useRealism && tglDiffraction.checked) ? currentMode.diffraction : 0.0);
       gl.uniform1f(uSparseLoc, currentMode.sparseMode); gl.uniform1f(uGainLoc, currentMode.exposureGain); gl.uniform1f(uShoulderLoc, currentMode.exposureShoulder);
       gl.uniform1f(uIsOrthoLoc, isOrthographicRender ? 1.0 : 0.0); 
       
@@ -2160,16 +2386,6 @@
           if (currentModeId === 'infrared') jA *= 0.1; if (currentModeId === 'ultraviolet') { jR=0.5; jG=0.2; jB=1.0; }
           if (currentModeId === 'xray') { jR=0.0; jG=0.9; jB=1.0; jA = Math.min(1.0, jA * 2.5); } addPoint(jet.x, jet.y, jet.z, 2, 3, jR, jG, jB, jA);
       }
-      
-      // Removed Supernova Remnant rendering per user request
-      /*
-      for (const rem of remnants) {
-          let progress = rem.age / rem.lifetime; let currentRadius = rem.maxRadius * Math.pow(progress, 0.4); 
-          let a = 1.0 - Math.pow(progress, 2.0); let r=0.2, g=0.6, b=1.0; 
-          if (currentModeId === 'xray') { r=0.8; g=0.2; b=1.0; a=Math.min(1.0, a*2.5); } else if (currentModeId === 'infrared') { r=1.0; g=0.3; b=0.1; a*=0.5; }
-          addPoint(rem.x, rem.y, rem.z, currentRadius * starVisualMult, 7.0, r, g, b, a * 0.8);
-      }
-      */
       
       for(const cloud of gasClouds) {
           let rp = getGasRenderParams(cloud, currentModeId);
@@ -2211,7 +2427,7 @@
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
       if(showGrid)drawGridOverlay(overlayCtx); if(showDarkMatter)drawDarkMatterHalo(overlayCtx);
 
-      if(tglRealism.checked && tglNoise.checked && currentMode.noiseStrength > 0 && currentModeId !== 'xray') {
+      if(useRealism && tglNoise.checked && currentMode.noiseStrength > 0 && currentModeId !== 'xray') {
           overlayCtx.fillStyle = `rgba(255,255,255,${currentMode.noiseStrength * 0.5 * Math.random()})`; overlayCtx.fillRect(0,0,overlayCanvas.width,overlayCanvas.height);
       }
 
@@ -2230,9 +2446,11 @@
       }
       
       const popup = document.getElementById('starPopup');
-      if (isDirectorMode) { popup.style.display = 'none'; }
+      if (isDirectorMode || currentModeId === 'spectroscopy') { popup.style.display = 'none'; }
       
-      if (astrometryTargets.length > 0) {
+      if (currentModeId === 'spectroscopy') drawSpectroscopyPanel();
+      
+      if (astrometryTargets.length > 0 && currentModeId !== 'spectroscopy') {
           let s0 = astrometryTargets[0]; let p0 = getRawProjection(s0.x, s0.y, s0.z);
           let sx0 = p0.rawX * (scale * highResMult) + (translateX * highResMult) + centerX; 
           let sy0 = p0.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
@@ -2256,18 +2474,20 @@
           }
 
           if (astrometryTargets.length === 1) {
-              if (highResMult === 1 && !isDirectorMode && currentModeId !== 'spectroscopy') {
+              if (highResMult === 1 && !isDirectorMode) {
                   popup.style.display = 'block'; popup.style.left = (sx0 + 20) + 'px'; popup.style.top = (sy0 + 20) + 'px';
                   let headerStr = `<div class="popup-header"><strong>Target Alpha</strong><span class="popup-toggle">${isPopupCollapsed ? '+' : '−'}</span></div>`;
                   if (isPopupCollapsed) { popup.innerHTML = headerStr; } 
                   else {
                       popup.innerHTML = headerStr + `
-                          <div class="stat-row"><span class="stat-label">Class:</span> <span class="stat-value">${getSpectralClass(s0.temperature, s0.stage)}</span></div>
+                          <div class="section-title">Classification</div>
+                          <div class="stat-row"><span class="stat-label">Class:</span> <span class="stat-value" style="color:var(--accent-blue);">${getSpectralClass(s0.temperature, s0.stage)}</span></div>
+                          <div class="stat-row"><span class="stat-label">Age:</span> <span class="stat-value">${formatTime(s0.ageMyr * 1e6)}</span></div>
+                          <div class="section-title">Physical Properties</div>
                           <div class="stat-row"><span class="stat-label">Mass:</span> <span class="stat-value">${s0.mass.toFixed(2)} M☉</span></div>
                           <div class="stat-row"><span class="stat-label">Radius:</span> <span class="stat-value">${s0.radius.toFixed(2)} R☉</span></div>
                           <div class="stat-row"><span class="stat-label">Luminosity:</span> <span class="stat-value">${s0.luminosity.toExponential(2)} L☉</span></div>
                           <div class="stat-row"><span class="stat-label">Temp:</span> <span class="stat-value">${Math.round(s0.temperature)} K</span></div>
-                          <div class="stat-row"><span class="stat-label">Age:</span> <span class="stat-value">${formatTime(s0.ageMyr * 1e6)}</span></div>
                       `;
                   }
               } 
@@ -2295,7 +2515,7 @@
                   const distLy = distPc * 3.262;
                   const relVel = Math.hypot(dvx, dvy, dvz) * 50; 
                   const radialDot = dx * dvx + dy * dvy + dz * dvz;
-                  const stateLabel = radialDot < 0 ? "<span style='color:#66aaff'>Approaching</span>" : "<span style='color:#ff6666'>Receding</span>";
+                  const stateLabel = radialDot < 0 ? "<span style='color:var(--accent-blue)'>Approaching</span>" : "<span style='color:var(--accent-red)'>Receding</span>";
 
                   popup.style.display = 'block'; popup.style.left = ((sx0 + sx1)/2 + 20) + 'px'; popup.style.top = ((sy0 + sy1)/2 + 20) + 'px';
                   let headerStr = `<div class="popup-header"><strong>Astrometry</strong><span class="popup-toggle">${isPopupCollapsed ? '+' : '−'}</span></div>`;
@@ -2312,25 +2532,24 @@
           }
       } 
       
-      if (spectroscopyTarget && !isDirectorMode) {
-          let pS = getRawProjection(spectroscopyTarget.x, spectroscopyTarget.y, spectroscopyTarget.z);
-          let sxS = pS.rawX * (scale * highResMult) + (translateX * highResMult) + centerX; 
-          let syS = pS.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-          overlayCtx.beginPath(); overlayCtx.strokeStyle = 'cyan'; overlayCtx.lineWidth = 2.5 * highResMult;
-          overlayCtx.setLineDash([]); overlayCtx.arc(sxS, syS, 14 * highResMult, 0, Math.PI * 2); overlayCtx.stroke();
-          
-          overlayCtx.fillStyle = 'rgba(0,100,150,0.8)'; overlayCtx.fillRect(sxS-12*highResMult, syS+15*highResMult, 24*highResMult, 12*highResMult);
-          overlayCtx.fillStyle = 'white'; overlayCtx.font = `${9*highResMult}px Arial`; overlayCtx.textAlign = 'center'; overlayCtx.fillText('SPEC', sxS, syS+24*highResMult);
+      // HUD Updates
+      document.getElementById('hud-time').textContent = formatTime(elapsedTime);
+      const hudPhase = document.getElementById('hud-phase');
+      if (isPaused) {
+          hudPhase.textContent = "Paused (Analysis)";
+          hudPhase.className = "hud-value val-active";
+      } else {
+          hudPhase.textContent = "Running";
+          hudPhase.className = "hud-value val-cool";
       }
-
-      if (currentModeId === 'spectroscopy') drawSpectroscopyPanel();
       
-      timerElement.textContent=`Time: ${formatTime(elapsedTime)}`;
-      const energy=computeTotalEnergy([...stars, ...blackHoles, ...gasClouds]);
-      stabilityIndex=Math.min(100,Math.max(0,(energy.kinetic/Math.abs(energy.potential))*100));
-      document.getElementById('stability').textContent=`Stability: ${Math.round(stabilityIndex)}`;
-      document.getElementById('energy').textContent=`Energy: ${energy.total.toExponential(2)}`;
-      document.getElementById('scale').textContent=`Scale: ${(pcPerPixel * glCanvas.width / scale).toFixed(0)} pc`;
+      document.getElementById('hud-sfr').textContent = instantaneousSFR.toFixed(2) + ' M☉/Myr';
+      document.getElementById('hud-bh').textContent = blackHoles[0] ? blackHoles[0].mass.toFixed(1) + ' M☉' : '0 M☉';
+      
+      let totalGas = coldGasMass + hotGasMass;
+      let coldPct = totalGas > 0 ? (coldGasMass / totalGas) * 100 : 0;
+      document.getElementById('hud-gas').textContent = coldPct.toFixed(1) + '%';
+      document.getElementById('hud-scale').textContent = (pcPerPixel * glCanvas.width / scale).toFixed(0) + ' pc';
       
       if (frameCount % scienceState.updateEveryFrames === 0 && !isCapturingSequence) {
           sampleDiagnostics();
@@ -2338,6 +2557,8 @@
 
           if (isDataRecording) {
               let timeMyr = elapsedTime / 1e6;
+              const energy=computeTotalEnergy([...stars, ...blackHoles, ...gasClouds]);
+              stabilityIndex=Math.min(100,Math.max(0,(energy.kinetic/Math.abs(energy.potential))*100));
               let starGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.starFit.b : 0;
               let gasGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.gasFit.b : 0;
               let tStarMass = stars.reduce((sum, s) => sum + s.mass, 0);
@@ -2438,6 +2659,7 @@
     function initSimulation() {
       const stage = galaxyStageSelect.value, presetId = galaxyTypePresetSelect.value, preset = GALAXY_PRESETS[presetId];
       const peakStarCapacity = parseInt(starCountSlider.value); const gasAmountMultiplier = parseFloat(gasAmountSlider.value);
+      const useClusters = document.getElementById('enableClusters').checked;
       
       centralBHMass = parseInt(massSlider.value);
       blackHoles = [{x:0, y:0, z:0, vx:0, vy:0, vz:0, ax:0, ay:0, az:0, mass:centralBHMass, radius:Math.max(15.0, baseEventHorizon * centralBHMass), accretionGlow:0, jetTimer:0, massAccretedThisFrame:0, isBH:true}];
@@ -2447,11 +2669,11 @@
       liveMassModel.enclosedBaryonicMass = [];
       liveMassModel.totalLiveMass = 0;
       cloudIdCounter = 0; 
-      cosmologicalInflowReservoir = 0; // Reset inflow budget on restart
+      cosmologicalInflowReservoir = 0; 
       
       refreshAnalysisUI();
       
-      glCanvas.style.cursor = "default"; isDirectorMode = false; document.getElementById('directorModeBtn').textContent = "Toggle Director Mode";
+      glCanvas.style.cursor = "default"; isDirectorMode = false; document.getElementById('directorModeBtn').textContent = "Toggle Cinematic Track";
 
       const stageParams = {
           new:   { starPct: 0.15, maxAge: 2e9,  avgGasMass: 200, baseGas: 20000 },
@@ -2470,6 +2692,15 @@
       const starCapacityControl = document.getElementById('starCountValue');
       if (starCapacityControl) starCapacityControl.textContent = `${actualStarCount} / ${peakStarCapacity}`;
 
+      let clusters = [];
+      if (useClusters) {
+          for(let i=0; i<4; i++) {
+              let r = Math.random() * (bulgeRadius * 1.5);
+              let th = Math.random() * Math.PI * 2;
+              clusters.push({x: r*Math.cos(th), y: r*Math.sin(th), z: gaussianRandom(0, 15)});
+          }
+      }
+
       for(let i=0;i<actualStarCount;i++){
         let r,theta,z;
         if(Math.random()<0.3){
@@ -2485,7 +2716,16 @@
             } 
             z=gaussianRandom(0,preset.thickness); 
         }
-        const x=r*Math.cos(theta),y=r*Math.sin(theta),dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
+        
+        let x=r*Math.cos(theta), y=r*Math.sin(theta);
+        if (useClusters && Math.random() < 0.15) {
+            let c = clusters[Math.floor(Math.random()*clusters.length)];
+            x = c.x + gaussianRandom(0, 25);
+            y = c.y + gaussianRandom(0, 25);
+            z = c.z + gaussianRandom(0, 25);
+        }
+        
+        const dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
         const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
         const a_sph_r = (G * (getDarkMatterMass(dist) + centralBHMass + m_bulge_enc)) / (dist*dist);
         const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y)); const MN_a = 200.0; const MN_b = 20.0;
@@ -2531,7 +2771,15 @@
             theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.3 / preset.armCount); 
         }
         
-        const x=r*Math.cos(theta),y=r*Math.sin(theta),dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
+        let x=r*Math.cos(theta), y=r*Math.sin(theta);
+        if (useClusters && Math.random() < 0.15) {
+            let c = clusters[Math.floor(Math.random()*clusters.length)];
+            x = c.x + gaussianRandom(0, 35);
+            y = c.y + gaussianRandom(0, 35);
+            z = c.z + gaussianRandom(0, 35);
+        }
+        
+        const dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
         const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
         const a_sph_r = (G * (getDarkMatterMass(dist) + centralBHMass + m_bulge_enc)) / (dist*dist);
         const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y)); const MN_a = 200.0; const MN_b = 20.0;
@@ -2562,13 +2810,20 @@
       scienceState.sfr.history = []; scienceState.sfr.currentBucketStart = 0; scienceState.sfr.currentBucketMass = 0;
       scienceState.sfr.currentBucketCount = 0; scienceState.sfr.cumulativeMassFormed = 0; scienceState.sfr.cumulativeStarsFormed = 0;
       scienceState.sfr.liveQueue = [];
+      sampleDiagnostics();
       updateSciencePanels(true);
+      updateInteractionHint();
     }
     
-    timeWarpBtn.addEventListener('click', () => { updatePhysics(100); updateSciencePanels(true); });
+    timeWarpBtn.addEventListener('click', () => { 
+        updatePhysics(100); 
+        sampleDiagnostics();
+        updateSciencePanels(true); 
+    });
     directorModeBtn.addEventListener('click', () => {
-        isDirectorMode = !isDirectorMode; directorModeBtn.textContent = isDirectorMode ? "Stop Director Mode" : "Toggle Director Mode";
+        isDirectorMode = !isDirectorMode; directorModeBtn.textContent = isDirectorMode ? "Stop Cinematic Track" : "Toggle Cinematic Track";
         trackingTarget = (isDirectorMode && astrometryTargets.length >= 1) ? astrometryTargets[0] : null;
+        updateInteractionHint();
     });
 
     clearTargetsBtn.addEventListener('click', () => { 
@@ -2577,6 +2832,7 @@
         hoveredStar = null; 
         projectedOrbitPath = [];
         refreshAnalysisUI(); 
+        updateInteractionHint();
     });
     
     chaseZoomSlider.addEventListener('input', () => { chaseCamZoomTarget = parseFloat(chaseZoomSlider.value); chaseZoomValue.textContent = chaseCamZoomTarget.toFixed(1) + 'x'; });
@@ -2596,9 +2852,10 @@
     takeScreenshotButton.addEventListener('click', () => takeCustomScreenshot(false));
     
     pauseSimButton.addEventListener('click', () => { 
-        isPaused = !isPaused; pauseSimButton.textContent = isPaused ? "Resume Simulation" : "Pause/Resume Simulation"; 
+        isPaused = !isPaused; pauseSimButton.textContent = isPaused ? "▶ Resume Simulation" : "⏸ Pause Simulation"; 
         glCanvas.style.cursor = isPaused ? "crosshair" : "default";
         if (!isPaused) { hoveredStar = null; currentMouseX = -1000; currentMouseY = -1000; isPopupCollapsed = true; } else { isPopupCollapsed = false; updateSciencePanels(true); }
+        updateInteractionHint();
     });
     
     glCanvas.addEventListener('wheel',(e)=>{
@@ -2609,7 +2866,7 @@
 
     glCanvas.addEventListener('mousedown',(e)=>{
         isCanvasMouseDown = true;
-        if (isDirectorMode) { isDirectorMode = false; directorModeBtn.textContent = "Toggle Director Mode"; trackingTarget = null; }
+        if (isDirectorMode) { isDirectorMode = false; directorModeBtn.textContent = "Toggle Cinematic Track"; trackingTarget = null; updateInteractionHint(); }
         dragStartX = e.clientX; dragStartY = e.clientY; lastX = e.clientX; lastY = e.clientY; lastMouseX = e.clientX; lastMouseY = e.clientY;
         if (e.button === 0) { isDragging = false; } else if (e.button === 2) { isRotating = false; }
     });
@@ -2670,6 +2927,7 @@
     glCanvas.addEventListener('contextmenu',e=>e.preventDefault());
     
     onResize(); initSimulation(); requestAnimationFrame(draw);
+    updateInteractionHint();
   </script>
 </body>
 </html>
