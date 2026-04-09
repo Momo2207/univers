@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Galaxy Simulation – Observatory Edition</title>
+  <title>Galaxy Simulation – Observatory Edition v16.0 (Thin Disk Dynamics)</title>
   <style>
     :root {
       --bg-dark: #090a0f;
@@ -30,7 +30,7 @@
 
     /* --- SIDEBAR --- */
     #controls {
-      width: 300px; background: var(--bg-panel);
+      width: 320px; background: var(--bg-panel);
       padding: 15px; box-sizing: border-box; z-index: 10; overflow-y: auto;
       box-shadow: 2px 0 15px rgba(0,0,0,0.9);
       border-right: 1px solid var(--border-color);
@@ -62,6 +62,7 @@
       position: absolute; top: 15px; left: 20px; z-index: 5;
       display: flex; gap: 10px; pointer-events: none;
       transition: opacity 0.3s ease;
+      flex-wrap: wrap; max-width: 800px;
     }
     body.presentation-mode #hud { opacity: 0.3; } 
     .hud-card {
@@ -212,29 +213,67 @@
         
         <label for="speed">Sim Speed: <span id="speedValue">1x</span></label>
         <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1">
+      </div>
+    </div>
+
+    <!-- Galactic Setup Group -->
+    <div class="control-group">
+      <div class="group-header">Scenario Setup <span class="group-toggle">−</span></div>
+      <div class="group-content">
         
-        <label for="galaxyTypePreset">Galaxy Architecture:</label>
-        <select id="galaxyTypePreset">
+        <label for="simMode" style="color:var(--accent-green); margin-bottom:10px;">Simulation Mode:</label>
+        <select id="simMode" style="border-color:var(--accent-green);">
+            <option value="single" selected>Single Galaxy</option>
+            <option value="collision">Galactic Collision</option>
+        </select>
+
+        <label style="color:var(--accent-blue);">GALAXY ALPHA</label>
+        <select id="galaxyAType">
             <option value="spiral-2" selected>Spiral (2-Arm)</option>
             <option value="spiral-6">Spiral (6-Arm)</option>
             <option value="ring">Ring Galaxy</option>
             <option value="disc">Disc Galaxy</option>
         </select>
-        
-        <label for="galaxyStage">Initial Age Epoch:</label>
-        <select id="galaxyStage">
+        <select id="galaxyAStage">
             <option value="new">New (Gas Rich)</option>
             <option value="adult" selected>Adult (Balanced)</option>
             <option value="dying">Dying (Depleted)</option>
         </select>
-        <div class="help-text text-warning">Applies on restart.</div>
+
+        <div id="galaxyBControls" style="display:none;">
+            <label style="color:var(--accent-red); margin-top:15px;">GALAXY BETA</label>
+            <select id="galaxyBType">
+                <option value="spiral-2">Spiral (2-Arm)</option>
+                <option value="spiral-6">Spiral (6-Arm)</option>
+                <option value="ring">Ring Galaxy</option>
+                <option value="disc" selected>Disc Galaxy</option>
+            </select>
+            <select id="galaxyBStage">
+                <option value="new">New (Gas Rich)</option>
+                <option value="adult">Adult (Balanced)</option>
+                <option value="dying" selected>Dying (Depleted)</option>
+            </select>
+
+            <hr style="border-top:1px solid var(--border-color); border-bottom:none; margin:10px 0;">
+            
+            <label for="initialSeparation">Initial Separation (X): <span id="initialSeparationValue">3000 pc</span></label>
+            <input type="range" id="initialSeparation" min="1000" max="8000" step="200" value="3000">
+
+            <label for="impactParam">Impact Parameter (Y): <span id="impactParamValue">1000 pc</span></label>
+            <input type="range" id="impactParam" min="0" max="5000" step="100" value="1000">
+            <div class="help-text">Impact Parameter controls head-on (0) vs glancing blow (>0).</div>
+
+            <label for="appVel">Approach Velocity: <span id="appVelValue">60 km/s</span></label>
+            <input type="range" id="appVel" min="0" max="300" step="10" value="60">
+        </div>
+        <div class="help-text text-warning" style="text-align:center; margin-top:8px;">Applies on restart</div>
       </div>
     </div>
 
     <!-- Science Panels -->
     <div class="control-group">
-      <div class="group-header">Science Panels <span class="group-toggle">−</span></div>
-      <div class="group-content">
+      <div class="group-header">Science Panels <span class="group-toggle">+</span></div>
+      <div class="group-content collapsed">
         <select id="sciPanelSelect">
             <option value="rotationCurve" selected>Mass & Rotation Curve</option>
             <option value="sfr">Star Formation History</option>
@@ -259,8 +298,8 @@
 
     <!-- Observation Camera -->
     <div class="control-group">
-      <div class="group-header">Observation Camera <span class="group-toggle">−</span></div>
-      <div class="group-content">
+      <div class="group-header">Observation Camera <span class="group-toggle">+</span></div>
+      <div class="group-content collapsed">
         <label for="observationFilter">Instrument / Filter:</label>
         <select id="observationFilter">
             <option value="visible" selected>Visible Light (Optical)</option>
@@ -290,8 +329,8 @@
       <div class="group-header">Director & Astrometry <span class="group-toggle">+</span></div>
       <div class="group-content collapsed">
         <button id="directorModeBtn" style="background:var(--bg-header);">Toggle Cinematic Track</button>
-        <label for="chaseZoomSlider">Chase Cam Zoom: <span id="chaseZoomValue">18.0x</span></label>
-        <input type="range" id="chaseZoomSlider" min="1.0" max="25.0" step="0.1" value="18.0">
+        <label for="chaseZoomSlider">Chase Cam Zoom: <span id="chaseZoomValue">8.0x</span></label>
+        <input type="range" id="chaseZoomSlider" min="1.0" max="25.0" step="0.1" value="8.0">
         <button id="clearTargetsBtn" class="btn-danger" style="margin-top:10px;">Clear Astrometry Targets</button>
       </div>
     </div>
@@ -310,8 +349,8 @@
         <label for="mass">Initial BH Seed Mass: <span id="massValue">100</span> M☉</label>
         <input type="range" id="mass" min="50" max="500" step="50" value="100">
         
-        <label for="starCount">Particle Capacity: <span id="starCountValue">25000</span></label>
-        <input type="range" id="starCount" min="5000" max="250000" step="5000" value="25000">
+        <label for="starCount">Particle Capacity (Total): <span id="starCountValue">20000</span></label>
+        <input type="range" id="starCount" min="5000" max="25000" step="1000" value="20000">
         
         <label for="gasAmount">Initial Gas Multiplier: <span id="gasAmountValue">100%</span></label>
         <input type="range" id="gasAmount" min="0.1" max="8.0" step="0.1" value="1.0">
@@ -353,8 +392,8 @@
         </div>
       </div>
     </div>
-
-    <!-- Export & Snapshots -->
+    
+    <!-- Export & Automation -->
     <div class="control-group">
       <div class="group-header">Export & Automation <span class="group-toggle">+</span></div>
       <div class="group-content collapsed">
@@ -395,7 +434,7 @@
         </div>
       </div>
     </div>
-
+    
   </div>
 
   <!-- MAIN SIMULATION CANVAS AND PANELS -->
@@ -406,8 +445,9 @@
     <div id="hud">
       <div class="hud-card"><div class="hud-label">Time Elapsed</div><div class="hud-value" id="hud-time">0 yr</div></div>
       <div class="hud-card"><div class="hud-label">Sim Status</div><div class="hud-value val-cool" id="hud-phase">Running</div></div>
-      <div class="hud-card"><div class="hud-label">Star Formation</div><div class="hud-value" id="hud-sfr">0 M☉/Myr</div></div>
-      <div class="hud-card"><div class="hud-label">Central BH Mass</div><div class="hud-value val-active" id="hud-bh">0 M☉</div></div>
+      <div class="hud-card"><div class="hud-label">System SFR</div><div class="hud-value" id="hud-sfr">0 M☉/Myr</div></div>
+      <div class="hud-card"><div class="hud-label">BH Mass (Alpha)</div><div class="hud-value val-active" id="hud-bh-a">0 M☉</div></div>
+      <div class="hud-card" id="hud-card-b"><div class="hud-label">BH Mass (Beta)</div><div class="hud-value val-alert" id="hud-bh-b">0 M☉</div></div>
       <div class="hud-card"><div class="hud-label">Cold Gas Res.</div><div class="hud-value val-cool" id="hud-gas">0%</div></div>
       <div class="hud-card"><div class="hud-label">Zoom Scale</div><div class="hud-value" id="hud-scale">1000 pc</div></div>
     </div>
@@ -510,7 +550,7 @@
         }
     });
 
-    // --- SCIENCE STATE & LIVE MASS MODEL ---
+    // --- SCIENCE STATE & DUAL LIVE MASS MODEL ---
     const scienceState = {
         enabled: true,
         selectedPanel: 'rotationCurve',
@@ -532,72 +572,103 @@
         }
     };
 
-    const liveMassModel = {
-        radii: [],
-        enclosedBaryonicMass: [],
-        totalLiveMass: 0,
-        maxRadius: 2000,
-        bins: 40,
-        lastUpdateFrame: -1
-    };
+    const liveMassModels = [
+        { radii: [], enclosedBaryonicMass: [], totalLiveMass: 0, maxRadius: 2000, bins: 40 },
+        { radii: [], enclosedBaryonicMass: [], totalLiveMass: 0, maxRadius: 2000, bins: 40 }
+    ];
 
     function updateLiveMassModel() {
-        const binSize = liveMassModel.maxRadius / liveMassModel.bins;
-        let binMasses = new Float32Array(liveMassModel.bins);
-        let currentTotalMass = 0;
+        for (let g = 0; g < blackHoles.length; g++) {
+            let model = liveMassModels[g];
+            let bh = blackHoles[g];
+            if (!bh) continue;
 
-        for (let i=0; i<stars.length; i++) {
-            let r = Math.sqrt(stars[i].x*stars[i].x + stars[i].y*stars[i].y);
-            let bin = Math.floor(r / binSize);
-            if (bin < liveMassModel.bins) binMasses[bin] += stars[i].mass;
-            currentTotalMass += stars[i].mass;
-        }
-        for (let i=0; i<gasClouds.length; i++) {
-            let r = Math.sqrt(gasClouds[i].x*gasClouds[i].x + gasClouds[i].y*gasClouds[i].y);
-            let bin = Math.floor(r / binSize);
-            if (bin < liveMassModel.bins) binMasses[bin] += gasClouds[i].mass;
-            currentTotalMass += gasClouds[i].mass;
-        }
+            const binSize = model.maxRadius / model.bins;
+            let binMasses = new Float32Array(model.bins);
+            let currentTotalMass = 0;
 
-        let cumulative = 0;
-        const alpha = 0.1; 
-        
-        if (liveMassModel.radii.length === 0) {
-            for (let i = 0; i < liveMassModel.bins; i++) {
-                cumulative += binMasses[i];
-                liveMassModel.radii[i] = (i + 0.5) * binSize;
-                liveMassModel.enclosedBaryonicMass[i] = cumulative;
+            for (let i=0; i<stars.length; i++) {
+                if (stars[i].galaxyIndex !== g) continue;
+                let dx = stars[i].x - bh.x; let dy = stars[i].y - bh.y;
+                let r = Math.sqrt(dx*dx + dy*dy);
+                let bin = Math.floor(r / binSize);
+                if (bin < model.bins) binMasses[bin] += stars[i].mass;
+                currentTotalMass += stars[i].mass;
             }
-            liveMassModel.totalLiveMass = currentTotalMass;
-        } else {
-            for (let i = 0; i < liveMassModel.bins; i++) {
-                cumulative += binMasses[i];
-                liveMassModel.enclosedBaryonicMass[i] = (liveMassModel.enclosedBaryonicMass[i] * (1 - alpha)) + (cumulative * alpha);
+            for (let i=0; i<gasClouds.length; i++) {
+                if (gasClouds[i].galaxyIndex !== g) continue;
+                let dx = gasClouds[i].x - bh.x; let dy = gasClouds[i].y - bh.y;
+                let r = Math.sqrt(dx*dx + dy*dy);
+                let bin = Math.floor(r / binSize);
+                if (bin < model.bins) binMasses[bin] += gasClouds[i].mass;
+                currentTotalMass += gasClouds[i].mass;
             }
-            liveMassModel.totalLiveMass = (liveMassModel.totalLiveMass * (1 - alpha)) + (currentTotalMass * alpha);
+
+            let cumulative = 0;
+            const alpha = 0.1; 
+            
+            if (model.radii.length === 0) {
+                for (let i = 0; i < model.bins; i++) {
+                    cumulative += binMasses[i];
+                    model.radii[i] = (i + 0.5) * binSize;
+                    model.enclosedBaryonicMass[i] = cumulative;
+                }
+                model.totalLiveMass = currentTotalMass;
+            } else {
+                for (let i = 0; i < model.bins; i++) {
+                    cumulative += binMasses[i];
+                    model.enclosedBaryonicMass[i] = (model.enclosedBaryonicMass[i] * (1 - alpha)) + (cumulative * alpha);
+                }
+                model.totalLiveMass = (model.totalLiveMass * (1 - alpha)) + (currentTotalMass * alpha);
+            }
         }
     }
     
-    function getLiveDiskMassAtRadius(r_cyl) {
-        if (liveMassModel.radii.length === 0) return totalDiskMass; 
-        const binSize = liveMassModel.maxRadius / liveMassModel.bins;
+    function getLiveDiskMassAtRadius(r_cyl, galaxyIndex) {
+        let model = liveMassModels[galaxyIndex];
+        if (!model || model.radii.length === 0) return totalDiskMass / blackHoles.length; 
+        const binSize = model.maxRadius / model.bins;
         let bin = Math.floor(r_cyl / binSize);
         if (bin < 0) return 0;
-        if (bin >= liveMassModel.bins) return liveMassModel.totalLiveMass;
-        return liveMassModel.enclosedBaryonicMass[bin];
+        if (bin >= model.bins) return model.totalLiveMass;
+        return model.enclosedBaryonicMass[bin];
     }
     
-    function getBaryonicAccel(x, y, z) {
-        const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y));
-        const liveMassEnc = getLiveDiskMassAtRadius(r_cyl);
+    function getBaryonicAccel(dx, dy, dz, galaxyIndex) {
+        const r_cyl = Math.max(0.1, Math.sqrt(dx*dx + dy*dy));
+        const r_sph = Math.max(0.1, Math.sqrt(dx*dx + dy*dy + dz*dz));
+        const liveMassEnc = getLiveDiskMassAtRadius(r_cyl, galaxyIndex);
+        
+        // Disk Potential
         const denom = Math.pow(r_cyl*r_cyl + 400.0, 1.5);
         const a_R = -(G * liveMassEnc * r_cyl) / denom;
-        const a_z = -(G * liveMassEnc * z) / denom;
-        return { ax: a_R * (x / r_cyl), ay: a_R * (y / r_cyl), az: a_z };
+        
+        // Boost vertical restoring force to mimic a thin disk potential
+        const a_z_disk = -(G * liveMassEnc * dz * 6.0) / denom; 
+        
+        let ax_disk = a_R * (dx / r_cyl);
+        let ay_disk = a_R * (dy / r_cyl);
+        let az_disk = a_z_disk;
+
+        // Spherical Potential (For Violent Relaxation post-merger)
+        let a_sph_mag = -(G * liveMassEnc) / (r_sph*r_sph + 400.0);
+        let ax_sph = a_sph_mag * (dx / r_sph);
+        let ay_sph = a_sph_mag * (dy / r_sph);
+        let az_sph = a_sph_mag * (dz / r_sph);
+
+        // Interpolate based on postMergerTimer (0 = disk, 1 = sphere)
+        let t = Math.min(1.0, postMergerTimer);
+
+        return { 
+            ax: ax_disk * (1 - t) + ax_sph * t, 
+            ay: ay_disk * (1 - t) + ay_sph * t, 
+            az: az_disk * (1 - t) + az_sph * t 
+        };
     }
     
-    function getBaryonicPotential(r_cyl, z) {
-        return -(G * getLiveDiskMassAtRadius(r_cyl)) / Math.sqrt(r_cyl*r_cyl + 400.0);
+    function getBaryonicPotential(dx, dy, dz, galaxyIndex) {
+        const r_cyl = Math.max(0.1, Math.sqrt(dx*dx + dy*dy));
+        return -(G * getLiveDiskMassAtRadius(r_cyl, galaxyIndex)) / Math.sqrt(r_cyl*r_cyl + 400.0);
     }
 
     const SPATIAL_CELL_SIZE = 150;
@@ -621,8 +692,8 @@
         const cx = Math.floor(x / SPATIAL_CELL_SIZE);
         const cy = Math.floor(y / SPATIAL_CELL_SIZE);
         let neighbors = [];
-        for(let ox = -1; ox <= 1; ox++) {
-            for(let oy = -1; oy <= 1; oy++) {
+        for(let ox = -2; ox <= 2; ox++) {
+            for(let oy = -2; oy <= 2; oy++) {
                 const key = (cx + ox) + ',' + (cy + oy);
                 if (spatialHash.has(key)) {
                     neighbors.push(...spatialHash.get(key));
@@ -633,9 +704,9 @@
     }
 
     const sciTitles = {
-        "rotationCurve": "Mass & Rotation Curve",
-        "sfr": "Star Formation Through Time",
-        "metallicity": "Radial Chemical Enrichment",
+        "rotationCurve": "Mass & Rotation Curve (Alpha)",
+        "sfr": "System Star Formation Through Time",
+        "metallicity": "Radial Chemical Gradient",
         "gasPhases": "Cold vs Hot Gas Reservoir",
         "bhAccretion": "Central Black Hole Fueling"
     };
@@ -753,9 +824,14 @@
     let frameCount=0;
     let jetParticles=[],blackHoles=[],stars=[],gasClouds=[],remnants=[];let isPaused=false;
     let isDirectorMode=false; let trackingTarget = null;
-    let chaseCamZoomTarget = 18.0;
+    let chaseCamZoomTarget = 8.0;
     let showDarkMatter=true,showJets=true,showGrid=true,showStreaks=true;
     let useRealisticColors = true, useLeapfrog = true;
+    
+    // Engine State
+    let isPostMerger = false;
+    let postMergerTimer = 0.0;
+    let mergerFlashGlow = 0.0;
 
     let isDataRecording = false;
     let dataRecordBuffer = [];
@@ -767,22 +843,12 @@
     const inflowRateValue = document.getElementById('inflowRateValue');
     inflowRateSlider.addEventListener('input', () => { inflowRateValue.textContent = inflowRateSlider.value + ' M☉/yr'; });
     
-    const CSV_HEADERS = [
-        "Time (Myr)", "Stability Index", "Total Energy", "Kinetic Energy", "Potential Energy", 
-        "Central BH Mass", "Star Count", "Gas Cloud Count", "Total Star Mass", "Total Gas Mass", 
-        "Instantaneous SFR", "Cold Gas Mass", "Hot Gas Mass", "Cold Gas Fraction", "BH Accretion Rate",
-        "Star Met. Gradient", "Gas Met. Gradient",
-        "RotCurve_Radii", "RotCurve_ModelTotal", "RotCurve_Baryonic", "RotCurve_DarkMatter", "RotCurve_ObsStars", "RotCurve_ObsGas",
-        "SFR_History_Time", "SFR_History_Mass",
-        "MetGrad_Radii", "MetGrad_Stars", "MetGrad_Gas"
-    ];
-
-    let centerX,centerY,centerZ=0,totalSizePc=5000,pcPerPixel;
+    let centerX,centerY,centerZ=0,totalSizePc=10000,pcPerPixel; 
     const G=0.008; let bulgeRadius=250, bulgeMass=500, galaxyRadius=550; let centralBHMass=50;
     let totalDiskMass = 0, totalGasMassCached = 0; 
     let instantaneousSFR = 0, coldGasMass = 0, hotGasMass = 0, bhAccretionRateLast = 0;
 
-    const baseEventHorizon = 0.001; let FORCE_SOFTENING=10; 
+    const baseEventHorizon = 0.001; let FORCE_SOFTENING=20; 
     const MAX_TRAIL_LENGTH=15;
     const dt=0.01,yearsPerStep=15000000;
     const dtMyr = (dt * yearsPerStep) / 1e6;
@@ -823,7 +889,29 @@
     const restartButton=document.getElementById('restartSim');
     const timeWarpBtn = document.getElementById('timeWarpBtn');
     const takeScreenshotButton=document.getElementById('takeScreenshot');
-    const pauseSimButton = document.getElementById('pauseSim'), galaxyStageSelect=document.getElementById('galaxyStage'), galaxyTypePresetSelect=document.getElementById('galaxyTypePreset');
+    const pauseSimButton = document.getElementById('pauseSim');
+    
+    // Scenario Setup Elements
+    const simModeSelect = document.getElementById('simMode');
+    const galaxyATypeSelect=document.getElementById('galaxyAType');
+    const galaxyBTypeSelect=document.getElementById('galaxyBType');
+    const galaxyAStageSelect=document.getElementById('galaxyAStage');
+    const galaxyBStageSelect=document.getElementById('galaxyBStage');
+    const appVelSlider=document.getElementById('appVel');
+    const impactParamSlider=document.getElementById('impactParam');
+    const initialSeparationSlider=document.getElementById('initialSeparation');
+    
+    // Toggle UI state based on single vs collision
+    simModeSelect.addEventListener('change', () => {
+        const isCollision = simModeSelect.value === 'collision';
+        document.getElementById('galaxyBControls').style.display = isCollision ? 'block' : 'none';
+        initSimulation();
+    });
+
+    appVelSlider.addEventListener('input', () => document.getElementById('appVelValue').textContent = appVelSlider.value + ' km/s');
+    impactParamSlider.addEventListener('input', () => document.getElementById('impactParamValue').textContent = impactParamSlider.value + ' pc');
+    initialSeparationSlider.addEventListener('input', () => document.getElementById('initialSeparationValue').textContent = initialSeparationSlider.value + ' pc');
+
     const clearTargetsBtn = document.getElementById('clearTargetsBtn');
     const directorModeBtn = document.getElementById('directorModeBtn');
     const chaseZoomSlider = document.getElementById('chaseZoomSlider');
@@ -910,6 +998,7 @@
                 float innerGlow = exp(-d * d * 15.0) * 0.15;
                 finalAlpha = (ring + innerGlow) * vColor.a;
             } else if (vType == 0.0 || vType == 6.0) {
+                // Standard Stars
                 float spikeStrength = smoothstep(4.0, 12.0, vSize);
                 if(spikeStrength > 0.0 && uDiffraction > 0.0) {
                     float spikeX = exp(-abs(c.x)*150.0) * exp(-abs(c.y)*20.0);
@@ -923,7 +1012,13 @@
                     finalRGB = starCol * (1.0 + halo);
                     finalAlpha = (core + halo * 0.5) * vColor.a;
                 }
+            } else if (vType == 1.0 || vType == 5.0) {
+                // FLUID GAS CLOUDS: Pure soft gradient, no solid core
+                float fluff = exp(-d * d * 25.0); 
+                finalRGB = vColor.rgb; // Keeps pure physical color
+                finalAlpha = fluff * vColor.a;
             } else {
+                // Fallback catch-all
                 vec3 baseCol = mix(vColor.rgb, vec3(1.0), core * 0.3); 
                 finalRGB = baseCol * (1.0 + halo * 0.5);
                 finalAlpha = (core + halo * 0.5) * vColor.a;
@@ -974,59 +1069,29 @@
       updateSciencePanels(true);
     }
 
-    function flushDataRecordBuffer(isFinal = false) {
-        if (dataRecordBuffer.length === 0) return;
-        
-        let csvContent = CSV_HEADERS.join(",") + "\n" + dataRecordBuffer.join("\n");
-        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        let url = URL.createObjectURL(blob);
-        
-        let link = document.createElement("a");
-        link.setAttribute("href", url);
-        let suffix = (isFinal && dataRecordPart === 1) ? "" : `_part${dataRecordPart}`;
-        link.setAttribute("download", `galaxy_simulation_data${suffix}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        dataRecordBuffer = [];
-        if (!isFinal) dataRecordPart++;
+    // Returns DM mass for a specific galaxy index
+    function getDarkMatterMass(r, galaxyIndex){ 
+        const presetId = galaxyIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const preset=GALAXY_PRESETS[presetId]; 
+        const x=r/rs; 
+        if(x===0) return 0; 
+        return 4*Math.PI*(rho0*preset.HALO_DENSITY_SCALE)*rs*rs*rs*(Math.log(1+x)-x/(1+x)); 
     }
 
-    document.getElementById('recordDataBtn').addEventListener('click', (e) => {
-        isDataRecording = !isDataRecording;
-        const btn = e.target;
-        const status = document.getElementById('recordStatus');
-        
-        if (isDataRecording) {
-            btn.textContent = "⏹ Stop Data Recording";
-            btn.classList.add("btn-record");
-            dataRecordBuffer = [];
-            dataRecordPart = 1;
-            status.style.display = "block";
-            status.textContent = `Recording... (0 rows)`;
-        } else {
-            btn.textContent = "Start Data Recording";
-            btn.classList.remove("btn-record");
-            status.style.display = "none";
-            flushDataRecordBuffer(true);
-        }
-    });
-
-    function getDarkMatterMass(r){ const preset=GALAXY_PRESETS[galaxyTypePresetSelect.value]; const x=r/rs; if(x===0) return 0; return 4*Math.PI*(rho0*preset.HALO_DENSITY_SCALE)*rs*rs*rs*(Math.log(1+x)-x/(1+x)); }
-
-    function getTheoreticalVelocities(r_cyl) {
+    function getTheoreticalVelocities(r_cyl, galaxyIndex) {
         const r_sph = r_cyl; 
-        const M_DM = getDarkMatterMass(r_sph);
-        const M_bulge_BH = bulgeMass + (blackHoles[0] ? blackHoles[0].mass : 0);
+        const M_DM = getDarkMatterMass(r_sph, galaxyIndex);
+        const bh = blackHoles[galaxyIndex];
+        const M_bulge_BH = bulgeMass + (bh ? bh.mass : 0);
 
         const a_DM = (G * M_DM) / (r_sph*r_sph + FORCE_SOFTENING*FORCE_SOFTENING);
         const a_bulge = (G * M_bulge_BH) / (r_sph*r_sph + FORCE_SOFTENING*FORCE_SOFTENING);
 
-        const diskAccel = getBaryonicAccel(r_cyl, 0, 0);
+        const diskAccel = getBaryonicAccel(r_cyl, 0, 0, galaxyIndex);
         const a_disk = -diskAccel.ax;
 
-        const scale = GALAXY_PRESETS[galaxyTypePresetSelect.value].INITIAL_VELOCITY_SCALE;
+        const presetId = galaxyIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const scale = GALAXY_PRESETS[presetId].INITIAL_VELOCITY_SCALE;
 
         const vDM = Math.sqrt(r_cyl * a_DM) * scale;
         const vBaryon = Math.sqrt(r_cyl * (a_bulge + a_disk)) * scale;
@@ -1035,42 +1100,76 @@
     }
 
     function computeAccelerations(ps) {
-      const presetId = galaxyTypePresetSelect.value; 
-      const preset = GALAXY_PRESETS[presetId];
-      const morphologyType = preset.type; 
-      const bhMass = blackHoles[0] ? blackHoles[0].mass : 0; const armCount = preset.armCount; const haloScale = preset.HALO_DENSITY_SCALE;
-
       for (let i = 0; i < ps.length; i++) {
         const p = ps[i]; 
-        const r_cyl = Math.max(0.1, Math.sqrt(p.x*p.x + p.y*p.y)); const r_sph = Math.max(0.1, Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z));
         let dax=0, day=0, daz=0;
         
-        const M_sph = getDarkMatterMass(r_sph) + bulgeMass + bhMass; 
-        const F_sph = (G * p.mass * M_sph) / (r_sph*r_sph + FORCE_SOFTENING * FORCE_SOFTENING);
-        dax += -(F_sph/p.mass)*(p.x/r_sph); day += -(F_sph/p.mass)*(p.y/r_sph); daz += -(F_sph/p.mass)*(p.z/r_sph);
-        
-        if (morphologyType !== "elliptical") {
-            const diskAccel = getBaryonicAccel(p.x, p.y, p.z);
-            dax += diskAccel.ax; day += diskAccel.ay; daz += diskAccel.az;
-        }
+        // Sum forces from both galaxies
+        for (let g = 0; g < blackHoles.length; g++) {
+            let bh = blackHoles[g];
+            if (!bh) continue;
 
-        if (morphologyType === "spiral" && p.mass > 0 && r_cyl > 50) {
-            const theta = Math.atan2(p.y, p.x); const phase = armCount * (theta - patternAngle) - (armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
-            const F_radial_total = Math.sqrt(dax*dax + day*day); const F_pert = F_radial_total * 0.02; 
-            const F_r_spiral = F_pert * Math.cos(phase); const F_t_spiral = -F_pert * Math.sin(phase); 
-            dax += F_r_spiral * (p.x/r_cyl) - F_t_spiral * (p.y/r_cyl); day += F_r_spiral * (p.y/r_cyl) + F_t_spiral * (p.x/r_cyl);
-        }
-        if (morphologyType === "disc" && presetId !== "ring" && r_cyl < bulgeRadius * 1.5) {
-            const theta = Math.atan2(p.y, p.x); const relTheta = theta - barAngle;
-            const F_radial_total = Math.sqrt(dax*dax + day*day); const A = 0.05 * Math.exp(-Math.pow(r_cyl / (bulgeRadius * 0.8), 2));
-            const f_r_bar = F_radial_total * A * Math.cos(2 * relTheta); const f_t_bar = F_radial_total * A * Math.sin(2 * relTheta);
-            dax += f_r_bar * (p.x/r_cyl) - f_t_bar * (p.y/r_cyl); day += f_r_bar * (p.y/r_cyl) + f_t_bar * (p.x/r_cyl);
-        }
-        if (p.isCluster) {
-            const r_scaled = Math.max(0.001, r_sph/rs); const rhoLocal = (rho0 * haloScale) / (r_scaled * Math.pow(1 + r_scaled, 2));
-            const vSq = p.vx*p.vx + p.vy*p.vy + p.vz*p.vz; const vMag = Math.max(0.001, Math.sqrt(vSq));
-            const a_df = -(DYNAMICAL_FRICTION_COEFF * G * G * p.mass * rhoLocal) / (vSq + 0.1);
-            dax += a_df * (p.vx / vMag); day += a_df * (p.vy / vMag); daz += a_df * (p.vz / vMag);
+            const dx = p.x - bh.x; const dy = p.y - bh.y; const dz = p.z - bh.z;
+            const r_cyl = Math.max(0.1, Math.sqrt(dx*dx + dy*dy)); 
+            const r_sph = Math.max(0.1, Math.sqrt(dx*dx + dy*dy + dz*dz));
+            
+            // Skip self-gravity for BH
+            if (p === bh) continue;
+
+            const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const preset = GALAXY_PRESETS[presetId];
+            const morphologyType = preset.type; 
+            const armCount = preset.armCount; 
+            const haloScale = preset.HALO_DENSITY_SCALE;
+
+            const M_sph = getDarkMatterMass(r_sph, g) + bulgeMass + bh.mass; 
+            const F_sph = (G * p.mass * M_sph) / (r_sph*r_sph + FORCE_SOFTENING * FORCE_SOFTENING);
+            dax += -(F_sph/p.mass)*(dx/r_sph); 
+            day += -(F_sph/p.mass)*(dy/r_sph); 
+            daz += -(F_sph/p.mass)*(dz/r_sph);
+            
+            if (morphologyType !== "elliptical") {
+                const diskAccel = getBaryonicAccel(dx, dy, dz, g);
+                dax += diskAccel.ax; day += diskAccel.ay; daz += diskAccel.az;
+            }
+
+            // Only apply spiral arms/bar potentials strongly to their native particles or nearby ones
+            if ((p.galaxyIndex === g && !isPostMerger) || r_cyl < galaxyRadius) {
+                if (morphologyType === "spiral" && p.mass > 0 && r_cyl > 50) {
+                    const theta = Math.atan2(dy, dx); const phase = armCount * (theta - patternAngle) - (armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
+                    const F_radial_total = Math.sqrt(dax*dax + day*day); const F_pert = F_radial_total * 0.02; 
+                    const F_r_spiral = F_pert * Math.cos(phase); const F_t_spiral = -F_pert * Math.sin(phase); 
+                    dax += F_r_spiral * (dx/r_cyl) - F_t_spiral * (dy/r_cyl); day += F_r_spiral * (dy/r_cyl) + F_t_spiral * (dx/r_cyl);
+                }
+                if (morphologyType === "disc" && presetId !== "ring" && r_cyl < bulgeRadius * 1.5) {
+                    const theta = Math.atan2(dy, dx); const relTheta = theta - barAngle;
+                    const F_radial_total = Math.sqrt(dax*dax + day*day); const A = 0.05 * Math.exp(-Math.pow(r_cyl / (bulgeRadius * 0.8), 2));
+                    const f_r_bar = F_radial_total * A * Math.cos(2 * relTheta); const f_t_bar = F_radial_total * A * Math.sin(2 * relTheta);
+                    dax += f_r_bar * (dx/r_cyl) - f_t_bar * (dy/r_cyl); day += f_r_bar * (dy/r_cyl) + f_t_bar * (dx/r_cyl);
+                }
+            }
+
+            if (p.isCluster && p.galaxyIndex === g) {
+                const r_scaled = Math.max(0.001, r_sph/rs); const rhoLocal = (rho0 * haloScale) / (r_scaled * Math.pow(1 + r_scaled, 2));
+                const vSq = p.vx*p.vx + p.vy*p.vy + p.vz*p.vz; const vMag = Math.max(0.001, Math.sqrt(vSq));
+                const a_df = -(DYNAMICAL_FRICTION_COEFF * G * G * p.mass * rhoLocal) / (vSq + 0.1);
+                dax += a_df * (p.vx / vMag); day += a_df * (p.vy / vMag); daz += a_df * (p.vz / vMag);
+            }
+            
+            // MACROSCOPIC DYNAMICAL FRICTION FOR BLACK HOLES
+            if (p.isBH && p !== bh) {
+                const relVx = p.vx - bh.vx; const relVy = p.vy - bh.vy; const relVz = p.vz - bh.vz;
+                const vSq = relVx*relVx + relVy*relVy + relVz*relVz;
+                const vMag = Math.max(0.001, Math.sqrt(vSq));
+
+                const densityFactor = Math.exp(-r_sph / (galaxyRadius * 3.0));
+                const MACRO_FRICTION = 0.015; 
+                const a_drag = -(MACRO_FRICTION * densityFactor * vSq);
+
+                dax += a_drag * (relVx / vMag);
+                day += a_drag * (relVy / vMag);
+                daz += a_drag * (relVz / vMag);
+            }
         }
         p.ax = dax; p.ay = day; p.az = daz;
       }
@@ -1104,20 +1203,29 @@
     }
 
     function buildRotationCurveData() {
+        const bhA = blackHoles[0];
+        if (!bhA) return;
+
         const maxR = galaxyRadius * 1.5; const numBins = 30; const binSize = maxR / numBins;
         let starBins = Array.from({length: numBins}, () => []); let gasBins = Array.from({length: numBins}, () => []);
 
         stars.forEach(s => {
-            const r = Math.sqrt(s.x*s.x + s.y*s.y); const bin = Math.floor(r / binSize);
+            if (s.galaxyIndex !== 0 && !isPostMerger) return;
+            let dx = s.x - bhA.x; let dy = s.y - bhA.y;
+            const r = Math.sqrt(dx*dx + dy*dy); const bin = Math.floor(r / binSize);
             if (bin >= 0 && bin < numBins) {
-                const vPhi = (-s.y * s.vx + s.x * s.vy) / Math.max(r, 0.1);
+                let dvx = s.vx - bhA.vx; let dvy = s.vy - bhA.vy;
+                const vPhi = (-dy * dvx + dx * dvy) / Math.max(r, 0.1);
                 starBins[bin].push(Math.abs(vPhi));
             }
         });
         gasClouds.forEach(g => {
-            const r = Math.sqrt(g.x*g.x + g.y*g.y); const bin = Math.floor(r / binSize);
+            if (g.galaxyIndex !== 0 && !isPostMerger) return;
+            let dx = g.x - bhA.x; let dy = g.y - bhA.y;
+            const r = Math.sqrt(dx*dx + dy*dy); const bin = Math.floor(r / binSize);
             if (bin >= 0 && bin < numBins) {
-                const vPhi = (-g.y * g.vx + g.x * g.vy) / Math.max(r, 0.1);
+                let dvx = g.vx - bhA.vx; let dvy = g.vy - bhA.vy;
+                const vPhi = (-dy * dvx + dx * dvy) / Math.max(r, 0.1);
                 gasBins[bin].push(Math.abs(vPhi));
             }
         });
@@ -1134,7 +1242,7 @@
             const r = (i + 0.5) * binSize; data.radii.push(r);
             data.starMedian.push(starBins[i].length >= 10 ? getMedian(starBins[i]) : null);
             data.gasMedian.push(gasBins[i].length >= 5 ? getMedian(gasBins[i]) : null);
-            const theo = getTheoreticalVelocities(r);
+            const theo = getTheoreticalVelocities(r, 0); 
             data.modelTotal.push(theo.vTotal); data.modelBaryon.push(theo.vBaryon); data.modelDarkMatter.push(theo.vDM);
             if(i > numBins * 0.7) { outerDM += theo.vDM; outerBar += theo.vBaryon; }
         }
@@ -1148,12 +1256,17 @@
         let starBins = Array.from({length: numBins}, () => ({mass: 0, zMass: 0}));
         let gasBins = Array.from({length: numBins}, () => ({mass: 0, zMass: 0}));
 
+        const bhA = blackHoles[0];
+        if (!bhA) return;
+
         stars.forEach(s => {
-            const r = Math.sqrt(s.x*s.x + s.y*s.y); const bin = Math.floor(r / binSize);
+            if(s.galaxyIndex !== 0 && !isPostMerger) return;
+            const r = Math.sqrt(Math.pow(s.x-bhA.x, 2) + Math.pow(s.y-bhA.y, 2)); const bin = Math.floor(r / binSize);
             if (bin >= 0 && bin < numBins) { starBins[bin].mass += s.mass; starBins[bin].zMass += s.metallicity * s.mass; }
         });
         gasClouds.forEach(g => {
-            const r = Math.sqrt(g.x*g.x + g.y*g.y); const bin = Math.floor(r / binSize);
+            if(g.galaxyIndex !== 0 && !isPostMerger) return;
+            const r = Math.sqrt(Math.pow(g.x-bhA.x, 2) + Math.pow(g.y-bhA.y, 2)); const bin = Math.floor(r / binSize);
             if (bin >= 0 && bin < numBins) { gasBins[bin].mass += g.mass; gasBins[bin].zMass += g.metallicity * g.mass; }
         });
 
@@ -1271,6 +1384,7 @@
                 { label: 'Obs. Stars', color: '#10b981', width: 1.5, data: d.radii.map((r,i)=>[r, d.starMedian[i]]) }
             ];
             let summary = d.dmDominates ? "Dark matter halo dominates outer disk support." : "Baryons provide majority of outer disk support.";
+            if(isPostMerger) summary = "Galaxy is relaxing. Rotation curve is increasingly dominated by random dispersion.";
             drawScienceChart(ds, null, summary);
             
         } else if (scienceState.selectedPanel === 'sfr') {
@@ -1329,15 +1443,20 @@
 
     function calculateProjectedOrbit(star) {
         projectedOrbitPath = []; let px = star.x, py = star.y, pz = star.z, pvx = star.vx, pvy = star.vy, pvz = star.vz;
-        let ax = 0, ay = 0, az = 0;
         for(let i = 0; i < 300; i++) {
-            const r_sph = Math.max(0.1, Math.sqrt(px*px + py*py + pz*pz)); 
-            const M_sph = getDarkMatterMass(r_sph) + bulgeMass + (blackHoles[0] ? blackHoles[0].mass : 0);
-            const F_sph = (G * M_sph) / (r_sph*r_sph + FORCE_SOFTENING * FORCE_SOFTENING);
-            ax = -F_sph*(px/r_sph); ay = -F_sph*(py/r_sph); az = -F_sph*(pz/r_sph);
-            
-            const diskAccel = getBaryonicAccel(px, py, pz);
-            ax += diskAccel.ax; ay += diskAccel.ay; az += diskAccel.az;
+            let ax=0, ay=0, az=0;
+            for(let g=0; g<blackHoles.length; g++) {
+                let bh = blackHoles[g];
+                if(!bh) continue;
+                let dx = px - bh.x, dy = py - bh.y, dz = pz - bh.z;
+                const r_sph = Math.max(0.1, Math.sqrt(dx*dx + dy*dy + dz*dz)); 
+                const M_sph = getDarkMatterMass(r_sph, g) + bulgeMass + bh.mass;
+                const F_sph = (G * M_sph) / (r_sph*r_sph + FORCE_SOFTENING * FORCE_SOFTENING);
+                ax += -F_sph*(dx/r_sph); ay += -F_sph*(dy/r_sph); az += -F_sph*(dz/r_sph);
+                
+                const diskAccel = getBaryonicAccel(dx, dy, dz, g);
+                ax += diskAccel.ax; ay += diskAccel.ay; az += diskAccel.az;
+            }
 
             pvx += ax * dt * 10; pvy += ay * dt * 10; pvz += az * dt * 10;
             px += pvx * dt * 10; py += pvy * dt * 10; pz += pvz * dt * 10;
@@ -1347,9 +1466,14 @@
 
     function gaussianRandom(m=0,s=1){const u1=Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;}
     
-    function generateStarMass() {
+    function generateStarMass(heatFactor = 0) {
         let minM = 0.1, maxM = 50.0;
         let u = Math.random();
+        
+        if (heatFactor > 250 && Math.random() < 0.4) {
+            u = u * 0.05; 
+        }
+        
         let alpha = -0.7; 
         return Math.pow( u * Math.pow(maxM, alpha) + (1-u) * Math.pow(minM, alpha) , 1/alpha );
     }
@@ -1425,12 +1549,18 @@
       for(const p of allParticles){
         if (isNaN(p.mass)) continue; 
         T+=0.5*p.mass*(p.vx*p.vx+p.vy*p.vy+p.vz*p.vz); 
-        const r_sph=Math.sqrt(p.x*p.x+p.y*p.y+p.z*p.z); const r_cyl=Math.sqrt(p.x*p.x+p.y*p.y);
-        if(r_sph>0) {
-          const M_sph = getDarkMatterMass(r_sph) + bulgeMass + (blackHoles[0] ? blackHoles[0].mass : 0);
-          const U_sph = -(G*p.mass*M_sph)/r_sph; 
-          const U_disk = getBaryonicPotential(r_cyl, p.z) * p.mass;
-          U += U_sph + U_disk;
+        
+        for(let g=0; g<blackHoles.length; g++){
+            let bh = blackHoles[g];
+            if(!bh) continue;
+            let dx=p.x-bh.x, dy=p.y-bh.y, dz=p.z-bh.z;
+            const r_sph=Math.sqrt(dx*dx+dy*dy+dz*dz); 
+            if(r_sph>0) {
+              const M_sph = getDarkMatterMass(r_sph, g) + bulgeMass + bh.mass;
+              const U_sph = -(G*p.mass*M_sph)/r_sph; 
+              const U_disk = getBaryonicPotential(dx, dy, dz, g) * p.mass;
+              U += U_sph + U_disk;
+            }
         }
       }
       return (lastEnergy = {kinetic: T, potential: U, total: T+U});
@@ -1475,56 +1605,57 @@
       for (let step = 0; step < steps; step++) {
         elapsedTime += dt * yearsPerStep;
         patternAngle += 0.0005 * dt; barAngle += 0.0015 * dt; 
-        const presetId = galaxyTypePresetSelect.value;
-        const presetType = GALAXY_PRESETS[presetId].type;
-        if (presetId === "ring") ringShockRadius += 10.0 * dt; 
+        
+        if (isPostMerger && postMergerTimer < 1.0) {
+            postMergerTimer += 0.0005 * dt; 
+        }
+
+        if (galaxyATypeSelect.value === "ring" && blackHoles.length > 0) ringShockRadius += 10.0 * dt; 
+        if (blackHoles.length > 1 && galaxyBTypeSelect.value === "ring") ringShockRadius += 10.0 * dt;
 
         checkSFRBucket();
-        
         if (frameCount % 30 === 0) updateLiveMassModel();
         
-        // --- COSMIC COLD GAS INFLOW ---
         let inflowRateVal = parseFloat(inflowRateSlider.value) * 100; 
         cosmologicalInflowReservoir += inflowRateVal * dt;
         
-        const stageParamsCurrent = {
-            new:   { avgGasMass: 200 },
-            adult: { avgGasMass: 150 },
-            dying: { avgGasMass: 50 }
-        }[galaxyStageSelect.value];
-        
-        let spawnMass = stageParamsCurrent.avgGasMass;
+        let spawnMass = 150;
         let maxClouds = parseInt(starCountSlider.value) * 1.5;
 
         while (cosmologicalInflowReservoir >= spawnMass && gasClouds.length < maxClouds) {
             cosmologicalInflowReservoir -= spawnMass;
             
+            let targetGIndex = Math.floor(Math.random() * blackHoles.length);
+            let bh = blackHoles[targetGIndex];
+            if (!bh) continue;
+
             let spawnRadius = galaxyRadius * 1.8;
             let theta = Math.random() * 2 * Math.PI;
             let cx = spawnRadius * Math.cos(theta);
             let cy = spawnRadius * Math.sin(theta);
             let cz = gaussianRandom(0, 50); 
             
-            const M_enc = getLiveDiskMassAtRadius(spawnRadius) + getDarkMatterMass(spawnRadius) + centralBHMass + bulgeMass;
-            const v_circ = Math.sqrt((G * M_enc) / spawnRadius) * GALAXY_PRESETS[galaxyTypePresetSelect.value].INITIAL_VELOCITY_SCALE;
+            const presetId = targetGIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const M_enc = getLiveDiskMassAtRadius(spawnRadius, targetGIndex) + getDarkMatterMass(spawnRadius, targetGIndex) + centralBHMass + bulgeMass;
+            const v_circ = Math.sqrt((G * M_enc) / spawnRadius) * GALAXY_PRESETS[presetId].INITIAL_VELOCITY_SCALE;
             
             let v_tan = v_circ * 0.7;
             let v_rad = -v_circ * 0.3;
 
             let cvx = (cx / spawnRadius) * v_rad - (cy / spawnRadius) * v_tan;
             let cvy = (cy / spawnRadius) * v_rad + (cx / spawnRadius) * v_tan;
-            let cvz = gaussianRandom(0, v_circ * 0.05);
+            let cvz = gaussianRandom(0, v_circ * 0.02);
 
             gasClouds.push({
                 id: cloudIdCounter++, 
-                x: cx, y: cy, z: cz, 
-                vx: cvx, vy: cvy, vz: cvz, 
+                x: bh.x + cx, y: bh.y + cy, z: bh.z + cz, 
+                vx: bh.vx + cvx, vy: bh.vy + cvy, vz: bh.vz + cvz, 
                 ax: 0, ay: 0, az: 0, 
                 mass: spawnMass, 
                 heat: 10, 
                 turbulence: 2, 
                 size: k * Math.pow(spawnMass, 1/3), 
-                galaxyIndex: 0, 
+                galaxyIndex: targetGIndex, 
                 starsCreated: 0, 
                 stellarMassReservoir: 0, 
                 metallicity: 0.01 
@@ -1559,6 +1690,14 @@
                     let dvx = c1.vx - n.vx, dvy = c1.vy - n.vy, dvz = c1.vz - n.vz;
                     let dvSq = dvx*dvx + dvy*dvy + dvz*dvz;
                     
+                    if (dvSq > 20000) {
+                        c1.heat += 5000 * dt;
+                        n.heat += 5000 * dt;
+                        c1.turbulence += 50 * dt;
+                        n.turbulence += 50 * dt;
+                        continue;
+                    }
+
                     if (dvSq < 100 && Math.abs(c1.heat - n.heat) < 50) { 
                         let totalMass = c1.mass + n.mass;
                         c1.vx = (c1.vx * c1.mass + n.vx * n.mass) / totalMass;
@@ -1594,94 +1733,122 @@
         if (useLeapfrog) {
             for(let i=0; i<allParticles.length; i++) {
                 const p = allParticles[i];
-                if (p.isBH) continue;
                 p.vx += p.ax * 0.5 * dt; p.vy += p.ay * 0.5 * dt; p.vz += p.az * 0.5 * dt;
                 p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
             }
             computeAccelerations(allParticles);
             for(let i=0; i<allParticles.length; i++) {
                 const p = allParticles[i];
-                if (p.isBH) continue;
                 p.vx += p.ax * 0.5 * dt; p.vy += p.ay * 0.5 * dt; p.vz += p.az * 0.5 * dt;
             }
         } else {
             computeAccelerations(allParticles);
             for(let i=0; i<allParticles.length; i++) {
                 const p = allParticles[i];
-                if (p.isBH) continue;
                 p.vx += p.ax * dt; p.vy += p.ay * dt; p.vz += p.az * dt;
                 p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
             }
         }
         
-        const bh = blackHoles[0];
-        if (bh) {
-            let totalEffectiveFuel = 0;
-            let fuelData = [];
-            
-            for (let i = 0; i < gasClouds.length; i++) {
-                const c = gasClouds[i];
-                if (c.mass < 1.0) continue;
-                let dx = c.x - bh.x, dy = c.y - bh.y, dz = c.z - bh.z;
-                let distSq = dx*dx + dy*dy + dz*dz;
+        if (blackHoles.length === 2) {
+            let bh1 = blackHoles[0], bh2 = blackHoles[1];
+            let dx = bh1.x - bh2.x, dy = bh1.y - bh2.y, dz = bh1.z - bh2.z;
+            let distSq = dx*dx + dy*dy + dz*dz;
+            let dvSq = Math.pow(bh1.vx - bh2.vx, 2) + Math.pow(bh1.vy - bh2.vy, 2) + Math.pow(bh1.vz - bh2.vz, 2);
+
+            if (distSq < 22500 && dvSq < 0.2) {
+                bh1.vx = (bh1.mass * bh1.vx + bh2.mass * bh2.vx) / (bh1.mass + bh2.mass);
+                bh1.vy = (bh1.mass * bh1.vy + bh2.mass * bh2.vy) / (bh1.mass + bh2.mass);
+                bh1.vz = (bh1.mass * bh1.vz + bh2.mass * bh2.vz) / (bh1.mass + bh2.mass);
+                bh1.x = (bh1.x + bh2.x) / 2; bh1.y = (bh1.y + bh2.y) / 2; bh1.z = (bh1.z + bh2.z) / 2;
+                bh1.mass += bh2.mass;
+                bh1.accretionGlow = 2.0; 
+                bh1.jetTimer = JET_DURATION * 3; 
+
+                for(let s of stars) s.galaxyIndex = 0;
+                for(let g of gasClouds) g.galaxyIndex = 0;
+
+                blackHoles.splice(1, 1);
+                document.getElementById('hud-card-b').style.display = 'none';
                 
-                if (distSq < 10000.0) { 
-                    const dist = Math.max(1, Math.sqrt(distSq));
-                    const coldWeight = clamp(1.0 - c.heat / 80.0, 0.0, 1.0);
-                    const turbPenalty = 1.0 / (1.0 + (c.turbulence || 0) * 0.1);
-                    const Lz = -dy * c.vx + dx * c.vy; 
+                isPostMerger = true;
+                mergerFlashGlow = 1.0; 
+            }
+        }
+
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (bh) {
+                let totalEffectiveFuel = 0;
+                let fuelData = [];
+                
+                for (let i = 0; i < gasClouds.length; i++) {
+                    const c = gasClouds[i];
+                    if (c.mass < 1.0) continue;
+                    let dx = c.x - bh.x, dy = c.y - bh.y, dz = c.z - bh.z;
+                    let distSq = dx*dx + dy*dy + dz*dz;
                     
-                    const angMomPenalty = 1.0 / (1.0 + Math.pow(Math.abs(Lz) / dist, 2.0));
-                    
-                    const fuelWeight = coldWeight * turbPenalty * angMomPenalty;
-                    const effectiveFuel = c.mass * fuelWeight;
-                    
-                    if (effectiveFuel > 0) {
-                        totalEffectiveFuel += effectiveFuel;
-                        fuelData.push({ cloud: c, eFuel: effectiveFuel, dist: dist });
+                    if (distSq < 10000.0) { 
+                        const dist = Math.max(1, Math.sqrt(distSq));
+                        const coldWeight = clamp(1.0 - c.heat / 80.0, 0.0, 1.0);
+                        const turbPenalty = 1.0 / (1.0 + (c.turbulence || 0) * 0.1);
+                        const Lz = -dy * (c.vx - bh.vx) + dx * (c.vy - bh.vy); 
+                        
+                        const angMomPenalty = 1.0 / (1.0 + Math.pow(Math.abs(Lz) / dist, 2.0));
+                        const fuelWeight = coldWeight * turbPenalty * angMomPenalty;
+                        const effectiveFuel = c.mass * fuelWeight;
+                        
+                        if (effectiveFuel > 0) {
+                            totalEffectiveFuel += effectiveFuel;
+                            fuelData.push({ cloud: c, eFuel: effectiveFuel, dist: dist });
+                        }
                     }
                 }
-            }
-            
-            let mDot = totalEffectiveFuel * 0.0005 * dt;
-            const maxBhGainPerStep = 0.05;
-            mDot = Math.min(mDot, maxBhGainPerStep);
-            bhAccretionRateLast = mDot;
-            
-            if (mDot > 0 && totalEffectiveFuel > 0) {
-                bh.massAccretedThisFrame += mDot;
-                bh.mass += mDot;
-                bh.accretionGlow = Math.min(1.0, bh.accretionGlow + (mDot * 10));
                 
-                for (let fd of fuelData) {
-                    let requestedShare = mDot * (fd.eFuel / totalEffectiveFuel);
-                    let maxCloudDrain = fd.cloud.mass * 0.01;
-                    let taken = Math.min(maxCloudDrain, requestedShare);
-                    fd.cloud.mass -= taken;
+                let mDot = totalEffectiveFuel * 0.0005 * dt;
+                const maxBhGainPerStep = 0.05;
+                mDot = Math.min(mDot, maxBhGainPerStep);
+                if(g === 0) bhAccretionRateLast = mDot;
+                
+                if (mDot > 0 && totalEffectiveFuel > 0) {
+                    bh.massAccretedThisFrame += mDot;
+                    bh.mass += mDot;
+                    bh.accretionGlow = Math.min(1.0, bh.accretionGlow + (mDot * 10));
+                    
+                    for (let fd of fuelData) {
+                        let requestedShare = mDot * (fd.eFuel / totalEffectiveFuel);
+                        let maxCloudDrain = fd.cloud.mass * 0.01;
+                        let taken = Math.min(maxCloudDrain, requestedShare);
+                        fd.cloud.mass -= taken;
+                    }
                 }
-            }
-            
-            if (bh.massAccretedThisFrame > JET_ACCRETION_SPIKE_THRESHOLD * 2) {
-                bh.jetTimer = JET_DURATION;
-            } else if (bh.massAccretedThisFrame > 0.0001) {
-                for (let fd of fuelData) {
-                    let heatingFactor = 1.0 / (fd.dist * 0.1 + 1.0);
-                    fd.cloud.heat += (bh.massAccretedThisFrame * 500 * heatingFactor) * dt;
-                    fd.cloud.turbulence += (bh.massAccretedThisFrame * 100 * heatingFactor) * dt;
+                
+                if (bh.massAccretedThisFrame > JET_ACCRETION_SPIKE_THRESHOLD * 2) {
+                    bh.jetTimer = JET_DURATION;
+                } else if (bh.massAccretedThisFrame > 0.0001) {
+                    for (let fd of fuelData) {
+                        let heatingFactor = 1.0 / (fd.dist * 0.1 + 1.0);
+                        fd.cloud.heat += (bh.massAccretedThisFrame * 500 * heatingFactor) * dt;
+                        fd.cloud.turbulence += (bh.massAccretedThisFrame * 100 * heatingFactor) * dt;
+                    }
                 }
-            }
 
-            bh.radius = Math.max(4.0, baseEventHorizon * bh.mass); 
+                bh.radius = Math.max(4.0, baseEventHorizon * bh.mass); 
+            }
         }
 
-        if (showJets && bh && bh.jetTimer > 0) {
-            bh.jetTimer--;
-            for (let i = 0; i < JET_PARTICLES_PER_STEP; i++) {
-                const rVx = gaussianRandom(0, JET_VELOCITY * 0.05), rVy = gaussianRandom(0, JET_VELOCITY * 0.05);
-                jetParticles.push({ x: bh.x, y: bh.y, z: bh.z, vx: rVx, vy: rVy, vz: JET_VELOCITY, lifetime: JET_LIFETIME });
-                jetParticles.push({ x: bh.x, y: bh.y, z: bh.z, vx: rVx, vy: rVy, vz: -JET_VELOCITY, lifetime: JET_LIFETIME });
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (showJets && bh && bh.jetTimer > 0) {
+                bh.jetTimer--;
+                for (let i = 0; i < JET_PARTICLES_PER_STEP; i++) {
+                    const rVx = gaussianRandom(0, JET_VELOCITY * 0.05), rVy = gaussianRandom(0, JET_VELOCITY * 0.05);
+                    jetParticles.push({ x: bh.x, y: bh.y, z: bh.z, vx: bh.vx + rVx, vy: bh.vy + rVy, vz: bh.vz + JET_VELOCITY, lifetime: JET_LIFETIME });
+                    jetParticles.push({ x: bh.x, y: bh.y, z: bh.z, vx: bh.vx + rVx, vy: bh.vy + rVy, vz: bh.vz - JET_VELOCITY, lifetime: JET_LIFETIME });
+                }
             }
         }
+
         for (let i = jetParticles.length - 1; i >= 0; i--) {
             const p = jetParticles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.lifetime -= 1;
             if (p.lifetime <= 0) { jetParticles.splice(i, 1); continue; }
@@ -1697,21 +1864,51 @@
         }
 
         for (let i = gasClouds.length - 1; i >= 0; i--) {
-          const cloud = gasClouds[i], presetType = GALAXY_PRESETS[presetId].type;
+          const cloud = gasClouds[i];
+          const presetId = cloud.galaxyIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+          const presetType = GALAXY_PRESETS[presetId].type;
           
           if (cloud.mass < 0.5) {
               gasClouds.splice(i, 1);
               continue;
           }
+          
+          if (blackHoles.length === 2) {
+              let opposingGIndex = 1 - cloud.galaxyIndex;
+              let opposingBH = blackHoles[opposingGIndex];
+              if (opposingBH) {
+                  let odx = cloud.x - opposingBH.x, ody = cloud.y - opposingBH.y, odz = cloud.z - opposingBH.z;
+                  let oDist = Math.max(0.1, Math.sqrt(odx*odx + ody*ody + odz*odz));
+                  let oPreset = GALAXY_PRESETS[opposingGIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value];
+                  
+                  let x_rs = oDist / rs;
+                  let density = (rho0 * oPreset.HALO_DENSITY_SCALE) / (x_rs * Math.pow(1+x_rs, 2) + 0.1);
+                  
+                  let relVx = cloud.vx - opposingBH.vx, relVy = cloud.vy - opposingBH.vy, relVz = cloud.vz - opposingBH.vz;
+                  let vSq = relVx*relVx + relVy*relVy + relVz*relVz;
+                  let vMag = Math.sqrt(vSq);
+                  
+                  if (vMag > 0) {
+                      let crossSection = Math.pow(cloud.mass, 0.66);
+                      let dragMag = 0.0000005 * density * vSq * crossSection / cloud.mass;
+                      cloud.vx -= dragMag * (relVx / vMag) * dt;
+                      cloud.vy -= dragMag * (relVy / vMag) * dt;
+                      cloud.vz -= dragMag * (relVz / vMag) * dt;
+                      cloud.heat += dragMag * vMag * 10.0 * dt; 
+                  }
+              }
+          }
 
           cloud.mass *= (1.0 - 0.00001 * dt); 
           cloud.turbulence = Math.max(0, (cloud.turbulence || 0) * (1 - 0.5 * dt));
           
-          const r_cyl = Math.max(0.1, Math.sqrt(cloud.x*cloud.x + cloud.y*cloud.y));
+          let bh = blackHoles[cloud.galaxyIndex];
+          if(!bh) continue;
+
+          let lx = cloud.x - bh.x; let ly = cloud.y - bh.y; let lz = cloud.z - bh.z;
+          const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly));
           
-          // --- FIXED GAUSSIAN AMBIENT PRESSURE ---
-          // Creates a steep dropoff outside the galaxy so halo gas expands and starves star formation
-          let ambientPressure = Math.exp(-Math.abs(cloud.z) / 40.0) * Math.exp(-Math.pow(r_cyl / (galaxyRadius * 0.8), 2.0));
+          let ambientPressure = Math.exp(-Math.abs(lz) / 40.0) * Math.exp(-Math.pow(r_cyl / (galaxyRadius * 0.8), 2.0));
           let pressureCompression = 0.5 + ambientPressure * 1.5; 
           
           let thermalExpansion = cloud.heat < 15 ? 1.0 : 1.0 + Math.min(2.0, cloud.heat / 150.0);
@@ -1724,14 +1921,10 @@
           if (cloud.heat > 150) {
               thermalBuoyancy = (cloud.heat - 150) * 0.0005; 
           }
-          if (cloud.z >= 0) {
-              cloud.vz += thermalBuoyancy * dt;
-          } else {
-              cloud.vz -= thermalBuoyancy * dt;
-          }
-          cloud.vz *= (1 - 0.05 * dt);
+          if (lz >= 0) { cloud.vz += thermalBuoyancy * dt; } else { cloud.vz -= thermalBuoyancy * dt; }
+          cloud.vz = bh.vz + (cloud.vz - bh.vz) * (1 - 0.05 * dt);
           
-          let verticalIsolation = Math.max(0, (Math.abs(cloud.z) - 100) / 100.0);
+          let verticalIsolation = Math.max(0, (Math.abs(lz) - 100) / 100.0);
           let haloCooling = 1.0 + verticalIsolation;
 
           let densityCoolingMultiplier = Math.min(2.5, Math.max(0.1, currentRho * 0.1));
@@ -1741,9 +1934,9 @@
           cloud.heat = Math.max(5, cloud.heat - (cloud.heat * radiativeCooling * highTempRadiator * haloCooling * 0.15 * dt)); 
           
           let compression = 1.0;
-          if (presetType === "spiral") {
+          if (presetType === "spiral" && !isPostMerger) {
               if (r_cyl > 50 && r_cyl < galaxyRadius) {
-                  const theta = Math.atan2(cloud.y, cloud.x);
+                  const theta = Math.atan2(ly, lx);
                   const m_arms = GALAXY_PRESETS[presetId].armCount;
                   const phase = m_arms * (theta - patternAngle) - (m_arms / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
                   if (Math.cos(phase) > 0.6) { 
@@ -1751,14 +1944,14 @@
                       compression = 2.5; 
                   }
               }
-          } else {
+          } else if (!isPostMerger) {
               cloud.heat += (5.0 / (r_cyl * 0.005 + 1.0)) * dt + (Math.random() * 0.5 * dt);
           }
           
           if (presetId === "ring") {
               const distToShock = r_cyl - ringShockRadius;
               if (distToShock > -20 && distToShock < 60) {
-                  cloud.vx += (cloud.x/r_cyl) * 8.0 * dt; cloud.vy += (cloud.y/r_cyl) * 8.0 * dt; 
+                  cloud.vx += (lx/r_cyl) * 8.0 * dt; cloud.vy += (ly/r_cyl) * 8.0 * dt; 
                   cloud.heat += 100.0 * dt; 
                   compression = 3.0;
               }
@@ -1783,7 +1976,8 @@
               cloud.stellarMassReservoir = (cloud.stellarMassReservoir || 0) + dM_star;
 
               if (cloud.stellarMassReservoir >= 0.5 && cloud.mass > 1.0) {
-                  let massVariation = generateStarMass();
+                  
+                  let massVariation = generateStarMass(cloud.heat);
                   massVariation = Math.max(0.1, Math.min(massVariation, cloud.mass - 0.5));
                   massVariation = Math.min(massVariation, cloud.stellarMassReservoir); 
                   
@@ -1797,7 +1991,8 @@
                       trailIdx:0, trailCount:0, 
                       ageMyr:0, 
                       metallicity: cloud.metallicity, 
-                      ax: cloud.ax, ay: cloud.ay, az: cloud.az 
+                      ax: cloud.ax, ay: cloud.ay, az: cloud.az,
+                      galaxyIndex: cloud.galaxyIndex
                   };
                   initStarPhysics(newStar);
                   stars.push(newStar);
@@ -1847,7 +2042,7 @@
                         vy: star.vy + (dirY * explosionVelocity * 0.3), 
                         vz: star.vz + (dirZ * explosionVelocity * 0.3),
                         ax: 0, ay: 0, az: 0, mass: massPerFragment, heat: 5000, turbulence: 20, size: k * Math.pow(massPerFragment, 1/3) * 1.5,
-                        galaxyIndex: 0, starsCreated: 0, stellarMassReservoir: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT
+                        galaxyIndex: star.galaxyIndex, starsCreated: 0, stellarMassReservoir: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT
                     });
                 }
 
@@ -1884,12 +2079,15 @@
     
     function drawDarkMatterHalo(ctx) { 
         if(!showDarkMatter || currentModeId === 'xray') return;
-        for(const bh of blackHoles){
+        for(let g = 0; g < blackHoles.length; g++){
+            const bh = blackHoles[g];
+            const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const preset = GALAXY_PRESETS[presetId];
+
             let p = getRawProjection(bh.x, bh.y, bh.z);
             let sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX; 
             let sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
             for(let r=50;r<=galaxyRadius*2;r+=20){
-                const preset=GALAXY_PRESETS[galaxyTypePresetSelect.value];
                 const x=r/rs,d=(rho0*preset.HALO_DENSITY_SCALE)/(x*(1+x)*(1+x)),o=Math.min(0.1,(d/(rho0*preset.HALO_DENSITY_SCALE))*0.2);
                 ctx.beginPath(); 
                 ctx.arc(sx, sy, r * scale * highResMult, 0, 2*Math.PI);
@@ -1901,9 +2099,9 @@
     function drawGridOverlay(ctx) { 
         if(!showGrid) return;
         const m = highResMult; ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1 * m;
-        const maxRadius = galaxyRadius * 2.5; const step = 200; 
+        const maxRadius = galaxyRadius * 2.5; const step = 500; 
 
-        for (let r = step; r <= maxRadius; r += step) {
+        for (let r = step; r <= maxRadius * 2; r += step) {
             ctx.beginPath();
             for (let theta = 0; theta <= Math.PI * 2; theta += 0.05) {
                 const x = r * Math.cos(theta), y = r * Math.sin(theta);
@@ -1914,17 +2112,27 @@
             }
             ctx.closePath(); ctx.stroke();
         }
-        ctx.beginPath();
-        for (let i = 0; i < 4; i++) {
-            const theta = (Math.PI / 4) * i; const dx = Math.cos(theta), dy = Math.sin(theta);
-            let p1 = getRawProjection(-maxRadius * dx, -maxRadius * dy, 0); let p2 = getRawProjection(maxRadius * dx, maxRadius * dy, 0);
-            const sx1 = p1.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
-            const sy1 = p1.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-            const sx2 = p2.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
-            const sy2 = p2.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-            ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2);
+
+        if (simModeSelect.value === 'collision' && blackHoles.length === 2) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
+            ctx.setLineDash([5 * m, 5 * m]);
+            for(let g=0; g<blackHoles.length; g++) {
+                let bh = blackHoles[g];
+                let p1 = getRawProjection(bh.x, bh.y, bh.z);
+                let p2 = getRawProjection(bh.x + bh.vx * 2000, bh.y + bh.vy * 2000, bh.z + bh.vz * 2000);
+                
+                let sx1 = p1.rawX * (scale * m) + (translateX * m) + centerX;
+                let sy1 = p1.rawY * (scale * m) + (translateY * m) + centerY;
+                let sx2 = p2.rawX * (scale * m) + (translateX * m) + centerX;
+                let sy2 = p2.rawY * (scale * m) + (translateY * m) + centerY;
+                
+                ctx.moveTo(sx1, sy1);
+                ctx.lineTo(sx2, sy2);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
         }
-        ctx.stroke();
     }
     
     function takeCustomScreenshot(auto=false) {
@@ -1997,9 +2205,20 @@
     }
 
     function getApproxDustDensity(x, y, z) {
-        const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y));
-        const zDensity = Math.exp(-Math.abs(z) / 25.0);
-        const presetId = galaxyTypePresetSelect.value;
+        let bestG = 0; let minDist = Infinity;
+        for(let g=0; g<blackHoles.length; g++){
+            if(!blackHoles[g]) continue;
+            let dSq = Math.pow(x-blackHoles[g].x, 2) + Math.pow(y-blackHoles[g].y, 2);
+            if(dSq < minDist){ minDist = dSq; bestG = g; }
+        }
+        
+        const bh = blackHoles[bestG];
+        const lx = x - bh.x; const ly = y - bh.y; const lz = z - bh.z;
+
+        const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly));
+        const zDensity = Math.exp(-Math.abs(lz) / 15.0); 
+        
+        const presetId = bestG === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
         const preset = GALAXY_PRESETS[presetId];
         
         let rDensity = 0;
@@ -2007,13 +2226,14 @@
         if (presetId === "ring") {
             const ringRadius = galaxyRadius * 0.75;
             rDensity = Math.exp(-Math.pow(r_cyl - ringRadius, 2) / 1500.0) * 1.5; 
-        } else if (preset.type === "spiral") {
-            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6));
+        } else if (preset.type === "spiral" && !isPostMerger) {
+            let coreClearance = Math.min(1.0, Math.pow(r_cyl / (bulgeRadius * 1.0), 2.0));
+            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6)) * coreClearance;
             if (r_cyl > 50 && r_cyl < galaxyRadius * 1.2) {
-                const theta = Math.atan2(y, x);
+                const theta = Math.atan2(ly, lx);
                 const phase = preset.armCount * (theta - patternAngle) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
                 const dustLane = Math.max(0, Math.cos(phase + 1.0));
-                rDensity += dustLane * Math.exp(-r_cyl / galaxyRadius) * 1.2;
+                rDensity += dustLane * Math.exp(-r_cyl / galaxyRadius) * 1.5;
             }
         } else {
             rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6));
@@ -2031,7 +2251,19 @@
             r = temp100 - 60; r = 329.698727446 * Math.pow(r, -0.1332047592);
             g = temp100 - 60; g = 288.1221695283 * Math.pow(g, -0.0755148492); b = 255;
         }
-        return [Math.min(255, Math.max(0, r)) / 255, Math.min(255, Math.max(0, g)) / 255, Math.min(255, Math.max(0, b)) / 255];
+        
+        let rNorm = Math.min(255, Math.max(0, r)) / 255;
+        let gNorm = Math.min(255, Math.max(0, g)) / 255;
+        let bNorm = Math.min(255, Math.max(0, b)) / 255;
+
+        let max = Math.max(rNorm, gNorm, bNorm);
+        if (max > 0) {
+            rNorm = rNorm + (rNorm - max) * 0.3;
+            gNorm = gNorm + (gNorm - max) * 0.3;
+            bNorm = bNorm + (bNorm - max) * 0.3;
+        }
+
+        return [Math.max(0, rNorm), Math.max(0, gNorm), Math.max(0, bNorm)];
     }
 
     function getStarRenderParams(star, modeId) {
@@ -2049,8 +2281,16 @@
         const useRealism = document.getElementById('tglRealism').checked;
         const dust = getApproxDustDensity(star.x, star.y, star.z);
 
+        const viewAngleFactor = 0.3 + 2.7 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
+
         if (modeId === 'visible') {
-            if (useRealism && tglDust.checked) { a = baseA * Math.exp(-dust * 1.5); b *= Math.exp(-dust * 2.5); g *= Math.exp(-dust * 1.0); } else { a = baseA; }
+            if (useRealism && tglDust.checked) { 
+                let effectiveDust = dust * viewAngleFactor;
+                a = baseA * Math.exp(-effectiveDust * 1.2); 
+                r *= Math.exp(-effectiveDust * 0.6); 
+                g *= Math.exp(-effectiveDust * 1.8); 
+                b *= Math.exp(-effectiveDust * 3.0); 
+            } else { a = baseA; }
             if (star.initialMass > MASSIVE_STAR_THRESHOLD && star.stage === 'MS') { pType = 6.0; sSize *= 2.0; }
         } else if (modeId === 'infrared') {
             a = baseA * Math.exp(-dust * 0.3); 
@@ -2072,28 +2312,38 @@
     }
 
     function getGasRenderParams(cloud, modeId) {
-        let shimmer = 0.8 + Math.sin(frameCount * 0.05 + cloud.x) * 0.2;
+        let shimmer = 0.95 + Math.sin(frameCount * 0.015 + cloud.id) * 0.05;
         
         let heatRatio = clamp((cloud.heat - 15) / 35, 0.0, 1.0); 
         let visualMult = coldGasVisualMult * (1.0 - heatRatio) + hotGasVisualMult * heatRatio;
 
-        // FIXED: Boosted base visibility of cold gas
         let baseAlpha = (cloud.heat > 50 ? 0.05 : 0.04) * shimmer * visualMult; 
-        let cSize = cloud.size * visualMult * 0.8; 
-        let r=0.0, g=0.8, b=0.9, a=baseAlpha;
+        let cSize = cloud.size * visualMult * 1.1; 
+        
+        let r=0.0, g=0.0, b=0.0, a=baseAlpha;
 
         const useRealism = document.getElementById('tglRealism').checked;
         const dust = getApproxDustDensity(cloud.x, cloud.y, cloud.z);
+        const viewAngleFactor = 0.3 + 2.7 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
 
-        if (modeId === 'visible') { 
-            if (cloud.heat > 50) { r=1.0; g=0.2; b=0.6; a*=1.0; } 
-            else { a*=1.4; } // FIXED: Cold gas is no longer aggressively dimmed 
+       if (modeId === 'visible') { 
+            if (cloud.heat > 1000) { 
+                r=0.9; g=0.2; b=1.0; a*=1.5; 
+            } 
+            else if (cloud.heat > 30) { 
+                r=0.4; g=0.5; b=1.0; a*=1.8; 
+            } 
+            else { 
+               r=0.85; g=0.3; b=0.0; a*=1.5; 
+                cSize *= 0.01; 
+            }
             
-            // FIXED: Gas is now subjected to dust extinction
             if (useRealism && tglDust.checked) {
-                a *= Math.exp(-dust * 1.5);
-                b *= Math.exp(-dust * 2.5);
-                g *= Math.exp(-dust * 1.0);
+                let effectiveDust = dust * viewAngleFactor;
+                a *= Math.exp(-effectiveDust * 1.0);
+                r *= Math.exp(-effectiveDust * 0.6);
+                g *= Math.exp(-effectiveDust * 1.8);
+                b *= Math.exp(-effectiveDust * 3.0);
             }
         } 
         else if (modeId === 'infrared') { 
@@ -2227,7 +2477,7 @@
         const footerY = chartY + chartH + 40;
         specCtx.fillStyle = '#6e7681'; specCtx.textAlign = 'left'; specCtx.font = '9px monospace';
         specCtx.fillText(`instrument=spectrograph`, chartX, footerY);
-        specCtx.fillText(`target=stellar      resolution=R300`, chartX, footerY + 12);
+        specCtx.fillText(`target=stellar     resolution=R300`, chartX, footerY + 12);
 
         let visGrad = specCtx.createLinearGradient(wlToX(380), 0, wlToX(750), 0);
         visGrad.addColorStop(0.0, '#3b0764'); visGrad.addColorStop(0.2, '#1d4ed8'); visGrad.addColorStop(0.4, '#06b6d4');
@@ -2360,7 +2610,11 @@
       gl.uniform1f(uExposureLoc, currentExposure); gl.uniform1f(uTimeLoc, frameCount * 0.01);
       gl.uniform1f(uHDRLoc, tglHDR.checked ? 1.0 : 0.0);
       gl.uniform1f(uPSFCoreLoc, currentMode.psfCore); gl.uniform1f(uPSFHaloLoc, currentMode.psfHalo);
-      gl.uniform1f(uBloomLoc, (useRealism && tglBloom.checked) ? currentMode.bloomStrength : 0.0); 
+      
+      let finalBloom = (useRealism && tglBloom.checked) ? currentMode.bloomStrength : 0.0;
+      if (mergerFlashGlow > 0) finalBloom += mergerFlashGlow * 3.0;
+      gl.uniform1f(uBloomLoc, finalBloom); 
+
       gl.uniform1f(uDiffractionLoc, (useRealism && tglDiffraction.checked) ? currentMode.diffraction : 0.0);
       gl.uniform1f(uSparseLoc, currentMode.sparseMode); gl.uniform1f(uGainLoc, currentMode.exposureGain); gl.uniform1f(uShoulderLoc, currentMode.exposureShoulder);
       gl.uniform1f(uIsOrthoLoc, isOrthographicRender ? 1.0 : 0.0); 
@@ -2375,6 +2629,7 @@
       }
 
       for(const bh of blackHoles) {
+          if(!bh) continue;
           let r=0.5+bh.accretionGlow*0.5, g=bh.accretionGlow*0.5, b=0.5+bh.accretionGlow*0.5, a=1.0;
           if (currentModeId === 'infrared') { r=1.0; g=0.2; b=0.0; a=0.3; } if (currentModeId === 'ultraviolet') { r=0.5; g=0.0; b=1.0; a=0.8; }
           if (currentModeId === 'xray') { r=1.0; g=1.0; b=1.0; a=Math.min(1.0, 0.8+bh.accretionGlow); }
@@ -2390,11 +2645,8 @@
       for(const cloud of gasClouds) {
           let rp = getGasRenderParams(cloud, currentModeId);
           if (rp.a > 0) {
-              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.75, 1, rp.r, rp.g, rp.b, rp.a * 0.4);
-              addPoint(cloud.x, cloud.y, cloud.z, 1.4 * rp.mult, 5, 0.5, rp.g, 1.0, rp.a * 1.8);
-              let rx = Math.sin(cloud.x * 12.3) * (rp.size * 0.8); let ry = Math.cos(cloud.y * 45.6) * (rp.size * 0.8); 
-              addPoint(cloud.x + rx, cloud.y + ry, cloud.z, 1.0 * rp.mult, 5, rp.r, rp.g, rp.b, rp.a);
-              addPoint(cloud.x - ry, cloud.y + rx, cloud.z, 1.0 * rp.mult, 5, rp.r, rp.g, rp.b, rp.a);
+              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 1.2, 1, rp.r, rp.g, rp.b, rp.a * 0.5);
+              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.6, 1, rp.r, rp.g, rp.b, rp.a * 0.8);
           }
       }
 
@@ -2429,6 +2681,12 @@
 
       if(useRealism && tglNoise.checked && currentMode.noiseStrength > 0 && currentModeId !== 'xray') {
           overlayCtx.fillStyle = `rgba(255,255,255,${currentMode.noiseStrength * 0.5 * Math.random()})`; overlayCtx.fillRect(0,0,overlayCanvas.width,overlayCanvas.height);
+      }
+
+      if (mergerFlashGlow > 0) {
+          overlayCtx.fillStyle = `rgba(200, 230, 255, ${mergerFlashGlow * 0.8})`;
+          overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+          mergerFlashGlow = Math.max(0, mergerFlashGlow - 0.02 * physicsSteps);
       }
 
       hoveredStar = null;
@@ -2482,6 +2740,7 @@
                       popup.innerHTML = headerStr + `
                           <div class="section-title">Classification</div>
                           <div class="stat-row"><span class="stat-label">Class:</span> <span class="stat-value" style="color:var(--accent-blue);">${getSpectralClass(s0.temperature, s0.stage)}</span></div>
+                          <div class="stat-row"><span class="stat-label">Origin:</span> <span class="stat-value">Galaxy ${s0.galaxyIndex === 0 ? 'Alpha' : 'Beta'}</span></div>
                           <div class="stat-row"><span class="stat-label">Age:</span> <span class="stat-value">${formatTime(s0.ageMyr * 1e6)}</span></div>
                           <div class="section-title">Physical Properties</div>
                           <div class="stat-row"><span class="stat-label">Mass:</span> <span class="stat-value">${s0.mass.toFixed(2)} M☉</span></div>
@@ -2544,7 +2803,11 @@
       }
       
       document.getElementById('hud-sfr').textContent = instantaneousSFR.toFixed(2) + ' M☉/Myr';
-      document.getElementById('hud-bh').textContent = blackHoles[0] ? blackHoles[0].mass.toFixed(1) + ' M☉' : '0 M☉';
+      document.getElementById('hud-bh-a').textContent = blackHoles[0] ? blackHoles[0].mass.toFixed(1) + ' M☉' : '0 M☉';
+      
+      // Hide Beta BH UI in Single Mode
+      document.getElementById('hud-card-b').style.display = blackHoles.length > 1 ? 'flex' : 'none';
+      if (blackHoles.length > 1) document.getElementById('hud-bh-b').textContent = blackHoles[1] ? blackHoles[1].mass.toFixed(1) + ' M☉' : '0 M☉';
       
       let totalGas = coldGasMass + hotGasMass;
       let coldPct = totalGas > 0 ? (coldGasMass / totalGas) * 100 : 0;
@@ -2657,151 +2920,210 @@
     }
 
     function initSimulation() {
-      const stage = galaxyStageSelect.value, presetId = galaxyTypePresetSelect.value, preset = GALAXY_PRESETS[presetId];
-      const peakStarCapacity = parseInt(starCountSlider.value); const gasAmountMultiplier = parseFloat(gasAmountSlider.value);
+      const peakStarCapacity = parseInt(starCountSlider.value); 
+      const gasAmountMultiplier = parseFloat(gasAmountSlider.value);
       const useClusters = document.getElementById('enableClusters').checked;
+      const isCollisionMode = document.getElementById('simMode').value === 'collision';
       
       centralBHMass = parseInt(massSlider.value);
-      blackHoles = [{x:0, y:0, z:0, vx:0, vy:0, vz:0, ax:0, ay:0, az:0, mass:centralBHMass, radius:Math.max(15.0, baseEventHorizon * centralBHMass), accretionGlow:0, jetTimer:0, massAccretedThisFrame:0, isBH:true}];
+      
+      const startDist = parseFloat(initialSeparationSlider.value) / 2;
+      const bParam = parseFloat(impactParamSlider.value);
+      const vAppDisplay = parseFloat(appVelSlider.value);
+      
+      const vAppEngine = vAppDisplay * 0.002; 
+
+      if (isCollisionMode) {
+          blackHoles = [
+              {x:-startDist, y: bParam/2, z:0, vx: vAppEngine, vy:0, vz:0, ax:0, ay:0, az:0, mass:centralBHMass, radius:Math.max(15.0, baseEventHorizon * centralBHMass), accretionGlow:0, jetTimer:0, massAccretedThisFrame:0, isBH:true},
+              {x: startDist, y:-bParam/2, z:0, vx:-vAppEngine, vy:0, vz:0, ax:0, ay:0, az:0, mass:centralBHMass, radius:Math.max(15.0, baseEventHorizon * centralBHMass), accretionGlow:0, jetTimer:0, massAccretedThisFrame:0, isBH:true}
+          ];
+      } else {
+          blackHoles = [
+              {x:0, y:0, z:0, vx:0, vy:0, vz:0, ax:0, ay:0, az:0, mass:centralBHMass, radius:Math.max(15.0, baseEventHorizon * centralBHMass), accretionGlow:0, jetTimer:0, massAccretedThisFrame:0, isBH:true}
+          ];
+      }
+
       stars = []; gasClouds = []; jetParticles = []; astrometryTargets = []; spectroscopyTarget = null; remnants = []; 
       
-      liveMassModel.radii = [];
-      liveMassModel.enclosedBaryonicMass = [];
-      liveMassModel.totalLiveMass = 0;
+      for(let g=0; g<blackHoles.length; g++) {
+          liveMassModels[g].radii = [];
+          liveMassModels[g].enclosedBaryonicMass = [];
+          liveMassModels[g].totalLiveMass = 0;
+      }
+
       cloudIdCounter = 0; 
       cosmologicalInflowReservoir = 0; 
+      
+      isPostMerger = false;
+      postMergerTimer = 0.0;
+      mergerFlashGlow = 0.0;
       
       refreshAnalysisUI();
       
       glCanvas.style.cursor = "default"; isDirectorMode = false; document.getElementById('directorModeBtn').textContent = "Toggle Cinematic Track";
 
-      const stageParams = {
-          new:   { starPct: 0.15, maxAge: 2e9,  avgGasMass: 200, baseGas: 20000 },
-          adult: { starPct: 0.70, maxAge: 8e9,  avgGasMass: 150, baseGas: 2000 },
-          dying: { starPct: 0.95, maxAge: 13.5e9, avgGasMass: 50,  baseGas: 50 }
-      }[stage];
+      totalDiskMass = 0;
 
-      const actualStarCount = Math.floor(peakStarCapacity * stageParams.starPct);
-      const gasCloudCount = Math.floor(stageParams.baseGas * gasAmountMultiplier);
+      for (let gIndex = 0; gIndex < blackHoles.length; gIndex++) {
+          const stage = gIndex === 0 ? galaxyAStageSelect.value : galaxyBStageSelect.value;
+          const presetId = gIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+          const preset = GALAXY_PRESETS[presetId];
 
-      const totalStarMass = actualStarCount * starMass; totalDiskMass = totalStarMass + (gasCloudCount * stageParams.avgGasMass); 
-      scale = 1.0; translateX = 0; translateY = 0; pcPerPixel = totalSizePc / glCanvas.width;
-      patternAngle = 0; barAngle = 0; ringShockRadius = bulgeRadius * 0.5; 
-      
-      const stageMaxAgeYears = stageParams.maxAge;
-      const starCapacityControl = document.getElementById('starCountValue');
-      if (starCapacityControl) starCapacityControl.textContent = `${actualStarCount} / ${peakStarCapacity}`;
+          const stageParams = {
+              new:   { starPct: 0.15, maxAge: 2e9,  avgGasMass: 200, baseGas: 10000 },
+              adult: { starPct: 0.70, maxAge: 8e9,  avgGasMass: 150, baseGas: 1000 },
+              dying: { starPct: 0.95, maxAge: 13.5e9, avgGasMass: 50,  baseGas: 25 }
+          }[stage];
 
-      let clusters = [];
-      if (useClusters) {
-          for(let i=0; i<4; i++) {
-              let r = Math.random() * (bulgeRadius * 1.5);
-              let th = Math.random() * Math.PI * 2;
-              clusters.push({x: r*Math.cos(th), y: r*Math.sin(th), z: gaussianRandom(0, 15)});
+          const actualStarCount = Math.floor((peakStarCapacity / blackHoles.length) * stageParams.starPct);
+          const gasCloudCount = Math.floor(stageParams.baseGas * gasAmountMultiplier);
+
+          const totalStarMass = actualStarCount * starMass; 
+          totalDiskMass += totalStarMass + (gasCloudCount * stageParams.avgGasMass); 
+          
+          const stageMaxAgeYears = stageParams.maxAge;
+          
+          let clusters = [];
+          if (useClusters) {
+              for(let i=0; i<4; i++) {
+                  let r = Math.random() * (bulgeRadius * 1.5);
+                  let th = Math.random() * Math.PI * 2;
+                  clusters.push({x: r*Math.cos(th), y: r*Math.sin(th), z: gaussianRandom(0, 15)});
+              }
+          }
+
+          let bhLocal = blackHoles[gIndex];
+
+          for(let i=0;i<actualStarCount;i++){
+            let r,theta,z;
+            
+            if(Math.random()<0.45){ 
+                r = Math.abs(gaussianRandom(0, bulgeRadius * 0.4)); 
+                theta=Math.random()*2*Math.PI;
+                const phi=Math.acos(2*Math.random()-1); z=r*Math.cos(phi); r=r*Math.sin(phi); 
+            }
+            else{ 
+                if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else r = bulgeRadius + Math.sqrt(Math.random()) * (galaxyRadius - bulgeRadius); 
+                theta=Math.random()*2*Math.PI; 
+                if(preset.type === "spiral" && Math.random() < 0.2) { 
+                    const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
+                    theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.4 / preset.armCount); 
+                } 
+                z=gaussianRandom(0,preset.thickness); 
+            }
+            
+            let lx=r*Math.cos(theta), ly=r*Math.sin(theta);
+            if (useClusters && Math.random() < 0.15) {
+                let c = clusters[Math.floor(Math.random()*clusters.length)];
+                lx = c.x + gaussianRandom(0, 25);
+                ly = c.y + gaussianRandom(0, 25);
+                z = c.z + gaussianRandom(0, 25);
+            }
+            
+            const dist=Math.max(0.1, Math.sqrt(lx*lx+ly*ly+z*z));
+            const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
+            const a_sph_r = (G * (getDarkMatterMass(dist, gIndex) + centralBHMass + m_bulge_enc)) / (dist*dist);
+            const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly)); const MN_a = 200.0; const MN_b = 20.0;
+            const a_MN_r = (G * (totalDiskMass / blackHoles.length) * r_cyl) / Math.pow(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(z*z + MN_b*MN_b), 2), 1.5);
+            const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
+            const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
+
+            const localVx = -v*ly/r_cyl + gaussianRandom(0, v * 0.05);
+            const localVy =  v*lx/r_cyl + gaussianRandom(0, v * 0.05);
+            // REDUCED INITIAL VERTICAL VELOCITY SCATTER
+            const localVz = gaussianRandom(0, v * 0.02);
+            
+            let massVar = generateStarMass();
+            
+            if (dist < bulgeRadius) {
+                massVar = Math.min(massVar, 0.7 + Math.random()*0.5); 
+            }
+
+            let initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+            
+            let newStar = { 
+                x: bhLocal.x + lx, y: bhLocal.y + ly, z: bhLocal.z + z, 
+                vx: bhLocal.vx + localVx, vy: bhLocal.vy + localVy, vz: bhLocal.vz + localVz, 
+                initialMass: massVar, 
+                trail: new Float32Array(MAX_TRAIL_LENGTH*3), 
+                trailIdx:0, trailCount:0, 
+                ageMyr: 0, 
+                metallicity: initialZ, 
+                ax: 0, ay: 0, az: 0,
+                galaxyIndex: gIndex
+            };
+            
+            initStarPhysics(newStar); 
+            
+            let maxPossibleAge = stageMaxAgeYears / 1e6;
+            if (massVar > MASSIVE_STAR_THRESHOLD) {
+                newStar.ageMyr = Math.random() * Math.min(newStar.t_ms, maxPossibleAge);
+            } else {
+                newStar.ageMyr = Math.random() * maxPossibleAge;
+            }
+            
+            updateStarEvolution(newStar);
+            stars.push(newStar);
+          }
+          
+          for(let i=0;i<gasCloudCount;i++){
+            let r, theta, z = gaussianRandom(0,preset.thickness);
+            if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else r = Math.random() * galaxyRadius;
+            theta=Math.random()*2*Math.PI;
+            if(preset.type === "spiral" && Math.random() < 0.5) { 
+                const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
+                theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.3 / preset.armCount); 
+            }
+            
+            let lx=r*Math.cos(theta), ly=r*Math.sin(theta);
+            if (useClusters && Math.random() < 0.15) {
+                let c = clusters[Math.floor(Math.random()*clusters.length)];
+                lx = c.x + gaussianRandom(0, 35);
+                ly = c.y + gaussianRandom(0, 35);
+                z = c.z + gaussianRandom(0, 35);
+            }
+            
+            const dist=Math.max(0.1, Math.sqrt(lx*lx+ly*ly+z*z));
+            const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
+            const a_sph_r = (G * (getDarkMatterMass(dist, gIndex) + centralBHMass + m_bulge_enc)) / (dist*dist);
+            const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly)); const MN_a = 200.0; const MN_b = 20.0;
+            const a_MN_r = (G * (totalDiskMass / blackHoles.length) * r_cyl) / Math.pow(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(z*z + MN_b*MN_b), 2), 1.5);
+            const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
+            const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
+
+            const localVx = -v*ly/r_cyl + gaussianRandom(0, v * 0.05);
+            const localVy = v*lx/r_cyl + gaussianRandom(0, v * 0.05);
+            // REDUCED INITIAL VERTICAL VELOCITY SCATTER
+            const localVz = gaussianRandom(0, v * 0.02);
+            
+            const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+            
+            let initialHeat = 10 + Math.random()*10;
+            if (preset.type === "spiral" && r_cyl > 50 && r_cyl < galaxyRadius) {
+                const phase = preset.armCount * (theta) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
+                if (Math.cos(phase) > 0.6) initialHeat = 60 + Math.random()*100;
+            } else if (presetId === "ring") {
+                if (Math.abs(r_cyl - ringShockRadius) < 60) initialHeat = 80 + Math.random()*100;
+            }
+
+            let initialTurbulence = 15.0 + (Math.random() * 20.0);
+
+            gasClouds.push({
+                id: cloudIdCounter++, 
+                x: bhLocal.x + lx, y: bhLocal.y + ly, z: bhLocal.z + z, 
+                vx: bhLocal.vx + localVx, vy: bhLocal.vy + localVy, vz: bhLocal.vz + localVz, 
+                ax:0, ay:0, az:0, mass, heat: initialHeat, turbulence: initialTurbulence, size:k*Math.pow(mass,1/3), 
+                galaxyIndex: gIndex, starsCreated:0, stellarMassReservoir:0, metallicity: initialZ
+            });
           }
       }
 
-      for(let i=0;i<actualStarCount;i++){
-        let r,theta,z;
-        if(Math.random()<0.3){
-            r=Math.random()*bulgeRadius; theta=Math.random()*2*Math.PI;
-            const phi=Math.acos(2*Math.random()-1); z=r*Math.cos(phi); r=r*Math.sin(phi); 
-        }
-        else{ 
-            if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else r = bulgeRadius + Math.sqrt(Math.random()) * (galaxyRadius - bulgeRadius); 
-            theta=Math.random()*2*Math.PI; 
-            if(preset.type === "spiral" && Math.random() < 0.2) { 
-                const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
-                theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.4 / preset.armCount); 
-            } 
-            z=gaussianRandom(0,preset.thickness); 
-        }
-        
-        let x=r*Math.cos(theta), y=r*Math.sin(theta);
-        if (useClusters && Math.random() < 0.15) {
-            let c = clusters[Math.floor(Math.random()*clusters.length)];
-            x = c.x + gaussianRandom(0, 25);
-            y = c.y + gaussianRandom(0, 25);
-            z = c.z + gaussianRandom(0, 25);
-        }
-        
-        const dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
-        const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
-        const a_sph_r = (G * (getDarkMatterMass(dist) + centralBHMass + m_bulge_enc)) / (dist*dist);
-        const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y)); const MN_a = 200.0; const MN_b = 20.0;
-        const a_MN_r = (G * totalDiskMass * r_cyl) / Math.pow(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(z*z + MN_b*MN_b), 2), 1.5);
-        const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
-        const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
-
-        const starVx = -v*y/r_cyl + gaussianRandom(0, v * 0.05), starVy =  v*x/r_cyl + gaussianRandom(0, v * 0.05), starVz = gaussianRandom(0,v*0.1);
-        
-        let massVar = generateStarMass();
-        let initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
-        
-        let newStar = { 
-            x: x, y: y, z: z, 
-            vx: starVx, vy: starVy, vz: starVz, 
-            initialMass: massVar, 
-            trail: new Float32Array(MAX_TRAIL_LENGTH*3), 
-            trailIdx:0, trailCount:0, 
-            ageMyr: 0, 
-            metallicity: initialZ, 
-            ax: 0, ay: 0, az: 0 
-        };
-        
-        initStarPhysics(newStar); 
-        
-        let maxPossibleAge = stageMaxAgeYears / 1e6;
-        if (massVar > MASSIVE_STAR_THRESHOLD) {
-            newStar.ageMyr = Math.random() * Math.min(newStar.t_ms, maxPossibleAge);
-        } else {
-            newStar.ageMyr = Math.random() * maxPossibleAge;
-        }
-        
-        updateStarEvolution(newStar);
-        stars.push(newStar);
-      }
+      scale = 1.0; translateX = 0; translateY = 0; pcPerPixel = totalSizePc / glCanvas.width;
+      patternAngle = 0; barAngle = 0; ringShockRadius = bulgeRadius * 0.5; 
       
-      for(let i=0;i<gasCloudCount;i++){
-        let r, theta, z = gaussianRandom(0,preset.thickness);
-        if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else r = Math.random() * galaxyRadius;
-        theta=Math.random()*2*Math.PI;
-        if(preset.type === "spiral" && Math.random() < 0.5) { 
-            const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
-            theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.3 / preset.armCount); 
-        }
-        
-        let x=r*Math.cos(theta), y=r*Math.sin(theta);
-        if (useClusters && Math.random() < 0.15) {
-            let c = clusters[Math.floor(Math.random()*clusters.length)];
-            x = c.x + gaussianRandom(0, 35);
-            y = c.y + gaussianRandom(0, 35);
-            z = c.z + gaussianRandom(0, 35);
-        }
-        
-        const dist=Math.max(0.1, Math.sqrt(x*x+y*y+z*z));
-        const m_bulge_enc = bulgeMass * Math.min(1.0, Math.pow(dist / bulgeRadius, 3));
-        const a_sph_r = (G * (getDarkMatterMass(dist) + centralBHMass + m_bulge_enc)) / (dist*dist);
-        const r_cyl = Math.max(0.1, Math.sqrt(x*x + y*y)); const MN_a = 200.0; const MN_b = 20.0;
-        const a_MN_r = (G * totalDiskMass * r_cyl) / Math.pow(r_cyl*r_cyl + Math.pow(MN_a + Math.sqrt(z*z + MN_b*MN_b), 2), 1.5);
-        const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
-        const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
-
-        const gasVx = -v*y/r_cyl + gaussianRandom(0, v * 0.05), gasVy = v*x/r_cyl + gaussianRandom(0, v * 0.05), gasVz = gaussianRandom(0,v*0.1);
-        const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
-        
-        let initialHeat = 10 + Math.random()*10;
-        if (preset.type === "spiral" && r_cyl > 50 && r_cyl < galaxyRadius) {
-            const phase = preset.armCount * (theta) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
-            if (Math.cos(phase) > 0.6) initialHeat = 60 + Math.random()*100;
-        } else if (presetId === "ring") {
-            if (Math.abs(r_cyl - ringShockRadius) < 60) initialHeat = 80 + Math.random()*100;
-        }
-
-        let initialTurbulence = 15.0 + (Math.random() * 20.0);
-
-        gasClouds.push({id: cloudIdCounter++, x:x,y:y,z:z,vx:gasVx,vy:gasVy,vz:gasVz, ax:0, ay:0, az:0, mass, heat: initialHeat, turbulence: initialTurbulence, size:k*Math.pow(mass,1/3), galaxyIndex:0, starsCreated:0, stellarMassReservoir:0, metallicity: initialZ});
-      }
+      const starCapacityControl = document.getElementById('starCountValue');
+      if (starCapacityControl) starCapacityControl.textContent = `${peakStarCapacity}`;
 
       elapsedTime=0;snapshots=[];
       updateLiveMassModel();
@@ -2841,13 +3163,19 @@
     massSlider.addEventListener('input',()=>{massValue.textContent=massSlider.value;}); 
     
     starCountSlider.addEventListener('input', () => {
-        const stage = galaxyStageSelect.value; const starPct = {new: 0.15, adult: 0.70, dying: 0.95}[stage];
-        const actual = Math.floor(parseInt(starCountSlider.value) * starPct); const starCapacityControl = document.getElementById('starCountValue');
-        if (starCapacityControl) starCapacityControl.textContent = `${actual} / ${starCountSlider.value}`;
+        const starCapacityControl = document.getElementById('starCountValue');
+        if (starCapacityControl) starCapacityControl.textContent = `${starCountSlider.value}`;
     });
     
     gasAmountSlider.addEventListener('input', () => { const gasAmountControl = document.getElementById('gasAmountValue'); if (gasAmountControl) gasAmountControl.textContent = `${(parseFloat(gasAmountSlider.value) * 100).toFixed(0)}%`; });
-    restartButton.addEventListener('click',initSimulation); galaxyStageSelect.addEventListener('change', initSimulation); galaxyTypePresetSelect.addEventListener('change', initSimulation);
+    restartButton.addEventListener('click',initSimulation); 
+    
+    // Bind init to all the setup dropdowns
+    galaxyAStageSelect.addEventListener('change', initSimulation); 
+    galaxyATypeSelect.addEventListener('change', initSimulation);
+    galaxyBStageSelect.addEventListener('change', initSimulation); 
+    galaxyBTypeSelect.addEventListener('change', initSimulation);
+
     starCountSlider.addEventListener('mouseup',initSimulation); gasAmountSlider.addEventListener('mouseup', initSimulation);
     takeScreenshotButton.addEventListener('click', () => takeCustomScreenshot(false));
     
@@ -2860,7 +3188,7 @@
     
     glCanvas.addEventListener('wheel',(e)=>{
         e.preventDefault(); const r=glCanvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-        const sF=e.deltaY>0?0.9:1.1,nS=Math.max(0.1,Math.min(30,scale*sF));
+        const sF=e.deltaY>0?0.9:1.1,nS=Math.max(0.01,Math.min(30,scale*sF));
         translateX=mx-(mx-translateX)*(nS/scale); translateY=my-(my-translateY)*(nS/scale); scale=nS;
     }, { passive: false });
 
