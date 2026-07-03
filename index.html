@@ -688,12 +688,15 @@
         }
     }
 
-    function getLocalClouds(x, y) {
+    // FIX: reach reduced from +/-2 to +/-1 cells. Cell size is 150 pc, so +/-1
+    // guarantees >= 150 pc coverage; the largest query radius in the code is
+    // 100 pc (BH fueling). Exact distance checks at every call site are unchanged.
+    function getLocalClouds(x, y, reach = 1) {
         const cx = Math.floor(x / SPATIAL_CELL_SIZE);
         const cy = Math.floor(y / SPATIAL_CELL_SIZE);
         let neighbors = [];
-        for(let ox = -2; ox <= 2; ox++) {
-            for(let oy = -2; oy <= 2; oy++) {
+        for(let ox = -reach; ox <= reach; ox++) {
+            for(let oy = -reach; oy <= reach; oy++) {
                 const key = (cx + ox) + ',' + (cy + oy);
                 if (spatialHash.has(key)) {
                     neighbors.push(...spatialHash.get(key));
@@ -854,7 +857,8 @@
     const dtMyr = (dt * yearsPerStep) / 1e6;
     
     let elapsedTime=0,physicsSteps=1;let stabilityIndex=0;
-    const THETA=0.5; let rho0=25, rs=85;
+    let totalPhysicsSteps = 0; // FIX: dedicated step counter for periodic physics-side updates
+    let rho0=25, rs=85; // FIX: removed dead constant THETA (Barnes-Hut opening angle; no tree code exists)
     let patternAngle = 0; let barAngle = 0; let ringShockRadius = 0; 
     const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002; 
     const JET_ACCRETION_SPIKE_THRESHOLD = 0.005; const JET_DURATION = 50; const JET_PARTICLES_PER_STEP = 4;
@@ -1464,7 +1468,7 @@
         }
     }
 
-    function gaussianRandom(m=0,s=1){const u1=Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;}
+    function gaussianRandom(m=0,s=1){const u1=1-Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;} // FIX: 1-Math.random() keeps u1 in (0,1], preventing log(0) = -Infinity / NaN velocities
     
     function generateStarMass(heatFactor = 0) {
         let minM = 0.1, maxM = 50.0;
@@ -1614,13 +1618,21 @@
         if (blackHoles.length > 1 && galaxyBTypeSelect.value === "ring") ringShockRadius += 10.0 * dt;
 
         checkSFRBucket();
-        if (frameCount % 30 === 0) updateLiveMassModel();
+        // FIX: was `frameCount % 30 === 0`, which ran the full-particle rebuild
+        // redundantly `physicsSteps` times on qualifying frames and behaved
+        // inconsistently during Time Warp. Now updates once every 30 physics steps.
+        totalPhysicsSteps++;
+        if (totalPhysicsSteps % 30 === 0) updateLiveMassModel();
         
         let inflowRateVal = parseFloat(inflowRateSlider.value) * 100; 
         cosmologicalInflowReservoir += inflowRateVal * dt;
         
         let spawnMass = 150;
         let maxClouds = parseInt(starCountSlider.value) * 1.5;
+        
+        // FIX: clamp reservoir (~20 spawns worth) so it can't accumulate unboundedly
+        // while the cloud cap is hit and then burst-spawn when the cap is raised.
+        cosmologicalInflowReservoir = Math.min(cosmologicalInflowReservoir, spawnMass * 20);
 
         while (cosmologicalInflowReservoir >= spawnMass && gasClouds.length < maxClouds) {
             cosmologicalInflowReservoir -= spawnMass;
@@ -1782,8 +1794,12 @@
                 let totalEffectiveFuel = 0;
                 let fuelData = [];
                 
-                for (let i = 0; i < gasClouds.length; i++) {
-                    const c = gasClouds[i];
+                // FIX (perf): was a full scan of all gasClouds per BH per step.
+                // Fueling radius is 100 pc < 150 pc cell size, so the spatial
+                // hash (+/-1 cells) covers it. Exact distSq check below unchanged.
+                const fuelCandidates = getLocalClouds(bh.x, bh.y);
+                for (let i = 0; i < fuelCandidates.length; i++) {
+                    const c = fuelCandidates[i];
                     if (c.mass < 1.0) continue;
                     let dx = c.x - bh.x, dy = c.y - bh.y, dz = c.z - bh.z;
                     let distSq = dx*dx + dy*dy + dz*dz;
@@ -1852,7 +1868,10 @@
         for (let i = jetParticles.length - 1; i >= 0; i--) {
             const p = jetParticles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.lifetime -= 1;
             if (p.lifetime <= 0) { jetParticles.splice(i, 1); continue; }
-            for (const cloud of gasClouds) {
+            // FIX (perf): was a full scan of all gasClouds per jet particle.
+            // Interaction radius is 5 pc, far below the 150 pc cell size.
+            const jetNeighbors = getLocalClouds(p.x, p.y);
+            for (const cloud of jetNeighbors) {
                 if (cloud.mass < 0.5) continue;
                 const dx = cloud.x - p.x, dy = cloud.y - p.y, dz = cloud.z - p.z, distSq = dx*dx + dy*dy + dz*dz;
                 if (distSq < JET_INTERACTION_RADIUS * JET_INTERACTION_RADIUS) {
@@ -3176,7 +3195,8 @@
     galaxyBStageSelect.addEventListener('change', initSimulation); 
     galaxyBTypeSelect.addEventListener('change', initSimulation);
 
-    starCountSlider.addEventListener('mouseup',initSimulation); gasAmountSlider.addEventListener('mouseup', initSimulation);
+    // FIX: 'mouseup' never fires on touch devices; 'change' fires on release for both mouse and touch.
+    starCountSlider.addEventListener('change', initSimulation); gasAmountSlider.addEventListener('change', initSimulation);
     takeScreenshotButton.addEventListener('click', () => takeCustomScreenshot(false));
     
     pauseSimButton.addEventListener('click', () => { 
@@ -3254,6 +3274,16 @@
     glCanvas.addEventListener('mouseout', () => { currentMouseX = -1000; currentMouseY = -1000; });
     glCanvas.addEventListener('contextmenu',e=>e.preventDefault());
     
+    // FIX: canvases now resize with the browser window (debounced; skipped
+    // mid-screenshot so high-res capture dimensions aren't clobbered).
+    let resizeDebounce = null;
+    window.addEventListener('resize', () => {
+        if (resizeDebounce) clearTimeout(resizeDebounce);
+        resizeDebounce = setTimeout(() => {
+            if (!isProcessingScreenshots && screenshotQueue.length === 0) onResize();
+        }, 150);
+    });
+
     onResize(); initSimulation(); requestAnimationFrame(draw);
     updateInteractionHint();
   </script>
