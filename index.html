@@ -874,6 +874,39 @@
     function isOpticalLikeMode(modeId = currentModeId) { return modeId === 'visible' || modeId === 'telescope'; }
     function shouldRenderColdGasDiagnostic(modeId = currentModeId) { return showColdGasOverlay || modeId === 'infrared' || modeId === 'spectroscopy'; }
 
+    function updateDirectorCameraLock(exactCenter = false) {
+        if (!isDirectorMode || isPaused) return;
+        if (!trackingTarget) { rotationY += 0.05 * physicsSteps; return; }
+        if (stars.indexOf(trackingTarget) === -1) { trackingTarget = null; return; }
+
+        let targetRotY = -Math.atan2(trackingTarget.vx, trackingTarget.vz) * 180 / Math.PI;
+        let targetRotX = Math.atan2(trackingTarget.vy, Math.hypot(trackingTarget.vx, trackingTarget.vz)) * 180 / Math.PI;
+        let deltaY = (targetRotY - rotationY) % 360; if (deltaY > 180) deltaY -= 360; if (deltaY < -180) deltaY += 360;
+        rotationY += deltaY * 0.02 * physicsSteps;
+        let deltaX = (targetRotX - rotationX) % 360; if (deltaX > 180) deltaX -= 360; if (deltaX < -180) deltaX += 360;
+        rotationX += deltaX * 0.02 * physicsSteps;
+        scale += (chaseCamZoomTarget - scale) * 0.01 * physicsSteps;
+
+        const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
+        const cosY = Math.cos(rY), sinY = Math.sin(rY), cosX = Math.cos(rX), sinX = Math.sin(rX);
+        const x1 = trackingTarget.x * cosY + trackingTarget.z * sinY;
+        const z1 = -trackingTarget.x * sinY + trackingTarget.z * cosY;
+        const y2 = trackingTarget.y * cosX - z1 * sinX;
+        const z2 = trackingTarget.y * sinX + z1 * cosX;
+        const sf = 1000 / (1000 + z2);
+
+        let targetTX = -x1 * sf * scale;
+        let targetTY = -y2 * sf * scale;
+
+        if (exactCenter) {
+            translateX = targetTX;
+            translateY = targetTY;
+        } else {
+            translateX += (targetTX - translateX) * 0.18 * physicsSteps;
+            translateY += (targetTY - translateY) * 0.18 * physicsSteps;
+        }
+    }
+
     function drawDirectorTrackingReticle(ctx, star, label = 'TRACK A') {
         if (!star || !stars.includes(star)) return;
         const p = getRawProjection(star.x, star.y, star.z);
@@ -4106,30 +4139,14 @@
       let isCapturingSequence = captureScreenshotRequest.pending || isProcessingScreenshots || screenshotQueue.length > 0;
 
       if (isDirectorMode && !isPaused) {
-          if (trackingTarget) {
-              if (stars.indexOf(trackingTarget) === -1) { trackingTarget = null; } 
-              else {
-                  let targetRotY = -Math.atan2(trackingTarget.vx, trackingTarget.vz) * 180 / Math.PI;
-                  let targetRotX = Math.atan2(trackingTarget.vy, Math.hypot(trackingTarget.vx, trackingTarget.vz)) * 180 / Math.PI;
-                  let deltaY = (targetRotY - rotationY) % 360; if (deltaY > 180) deltaY -= 360; if (deltaY < -180) deltaY += 360;
-                  rotationY += deltaY * 0.02 * physicsSteps;
-                  let deltaX = (targetRotX - rotationX) % 360; if (deltaX > 180) deltaX -= 360; if (deltaX < -180) deltaX += 360;
-                  rotationX += deltaX * 0.02 * physicsSteps;
-                  scale += (chaseCamZoomTarget - scale) * 0.01 * physicsSteps; 
-
-                  const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
-                  const cosY = Math.cos(rY), sinY = Math.sin(rY), cosX = Math.cos(rX), sinX = Math.sin(rX);
-                  const x1 = trackingTarget.x * cosY + trackingTarget.z * sinY; const z1 = -trackingTarget.x * sinY + trackingTarget.z * cosY;
-                  const y2 = trackingTarget.y * cosX - z1 * sinX; const z2 = trackingTarget.y * sinX + z1 * cosX;
-                  const sf = 1000 / (1000 + z2);
-
-                  let targetTX = -x1 * sf * scale; let targetTY = -y2 * sf * scale; 
-                  translateX += (targetTX - translateX) * 0.05 * physicsSteps; translateY += (targetTY - translateY) * 0.05 * physicsSteps;
-              }
-          } else { rotationY += 0.05 * physicsSteps; }
+          updateDirectorCameraLock(false);
       }
 
       if(!isPaused && !isCapturingSequence) updatePhysics(physicsSteps);
+
+      if (isDirectorMode && !isPaused) {
+          updateDirectorCameraLock(true);
+      }
       
       totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
       buildProjectedDustField();
