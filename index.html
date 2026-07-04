@@ -503,12 +503,48 @@
 
   <script>
     const bgCanvas=document.getElementById('background-canvas');const bgCtx=bgCanvas.getContext('2d');
-    const glCanvas=document.getElementById('simulation');const gl=glCanvas.getContext('webgl',{preserveDrawingBuffer:true,antialias:true,alpha:true});
+    const glCanvas=document.getElementById('simulation');
+
+    function createGalaxyWebGLContext(canvas) {
+        const attempts = [
+            { label: 'webgl / full quality', type: 'webgl', attrs: { preserveDrawingBuffer: true, antialias: true, alpha: true, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'high-performance' } },
+            { label: 'webgl / no antialias', type: 'webgl', attrs: { preserveDrawingBuffer: true, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
+            { label: 'webgl / safe driver fallback', type: 'webgl', attrs: { preserveDrawingBuffer: false, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
+            { label: 'experimental-webgl / safe fallback', type: 'experimental-webgl', attrs: { preserveDrawingBuffer: false, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
+            { label: 'webgl2 / safe fallback', type: 'webgl2', attrs: { preserveDrawingBuffer: false, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } }
+        ];
+
+        for (const attempt of attempts) {
+            try {
+                const ctx = canvas.getContext(attempt.type, attempt.attrs);
+                if (ctx) {
+                    window.__galaxyWebGLContext = { label: attempt.label, attrs: attempt.attrs };
+                    console.info('[Galaxy Simulation] WebGL context created:', attempt.label);
+                    return ctx;
+                }
+            } catch (err) {
+                console.warn('[Galaxy Simulation] WebGL context attempt failed:', attempt.label, err);
+            }
+        }
+        return null;
+    }
+
+    function showWebGLFailureMessage() {
+        const container = document.getElementById('sim-container') || document.body;
+        const panel = document.createElement('div');
+        panel.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:620px;background:rgba(15,20,25,.96);border:1px solid #ef4444;color:#e2e8f0;padding:22px;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.7);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;z-index:99999;line-height:1.45;';
+        panel.innerHTML = '<div style="font-size:15px;font-weight:700;color:#fca5a5;margin-bottom:8px;">WebGL could not start</div>' +
+            '<div style="font-size:13px;color:#cbd5e1;">The simulation needs WebGL. This browser/device refused all WebGL context modes, including safe fallback settings.</div>' +
+            '<div style="font-size:12px;color:#94a3b8;margin-top:12px;">Try enabling hardware acceleration, updating the graphics driver, closing other GPU-heavy tabs, or opening the page in Chrome/Edge. In Firefox, also check <strong>about:support</strong> → Graphics → WebGL status.</div>';
+        container.appendChild(panel);
+    }
+
+    const gl=createGalaxyWebGLContext(glCanvas);
     const overlayCanvas=document.getElementById('overlay-canvas');const overlayCtx=overlayCanvas.getContext('2d');
     const specCanvas=document.getElementById('spectrumCanvas');const specCtx=specCanvas.getContext('2d');
     const sciCanvas=document.getElementById('scienceCanvas');const sciCtx=sciCanvas.getContext('2d');
     const sciStats=document.getElementById('scienceStats');
-    if(!gl) throw new Error('WebGL not supported');
+    if(!gl) { showWebGLFailureMessage(); throw new Error('WebGL not supported or blocked by browser/GPU settings'); }
     
     glCanvas.style.cursor = "default";
     
