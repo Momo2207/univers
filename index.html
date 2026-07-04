@@ -999,10 +999,17 @@
     const dustBrightnessValue = document.getElementById('dustBrightnessValue');
     
     let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
+
+    function mapDustBiasToMultiplier(val) {
+        // Negative dust bias should behave like a true fade-out, not just a small linear reduction.
+        // At -0.5 this leaves 25% dust; at -0.9 only 1%; at -1 dust is fully off.
+        if (val < 0) return Math.pow(Math.max(0, 1.0 + val), 2.0);
+        return 1.0 + val;
+    }
     
     hotGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(hotGasBrightnessSlider.value); hotGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; hotGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
     coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
-    dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); const shown = val.toFixed(2); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + shown; dustVisualMult = Math.max(0, 1.0 + val); });
+    dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); const shown = val.toFixed(2); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + shown; dustVisualMult = mapDustBiasToMultiplier(val); });
 
     const starScaleSlider = document.getElementById('starScale');
     const starScaleValue = document.getElementById('starScaleValue');
@@ -2422,7 +2429,7 @@
         let alpha = 1.0, size = 1.0, warmMix = 0.0;
 
         const r = ctx.rCyl;
-        const diskFalloff = clamp(0.30 + 0.82 * Math.exp(-r / (galaxyRadius * 0.72)), 0.34, 1.06);
+        const diskFalloff = clamp(0.42 + 0.74 * Math.exp(-r / (galaxyRadius * 0.82)), 0.46, 1.08);
         alpha *= diskFalloff;
 
         // Smooth the unresolved old-star bulge: fewer glittering white points, warmer integrated light.
@@ -2439,7 +2446,7 @@
             const c = Math.cos(phase);
             const ridge = clamp((c - 0.42) / 0.58, 0, 1);
             const interArm = clamp((0.35 - c) / 1.35, 0, 1);
-            alpha *= (1.0 + ridge * 0.20) * (1.0 - interArm * 0.33);
+            alpha *= (1.0 + ridge * 0.16) * (1.0 - interArm * 0.12);
             size *= 1.0 + ridge * 0.05;
         }
         return { alpha, size, warmMix };
@@ -2465,10 +2472,10 @@
         if (modeId === 'visible') {
             if (useRealism && tglDust.checked) { 
                 let effectiveDust = dust * viewAngleFactor;
-                a = baseA * Math.exp(-effectiveDust * 1.2); 
-                r *= Math.exp(-effectiveDust * 0.6); 
-                g *= Math.exp(-effectiveDust * 1.8); 
-                b *= Math.exp(-effectiveDust * 3.0); 
+                a = baseA * Math.exp(-effectiveDust * 0.72); 
+                r *= Math.exp(-effectiveDust * 0.35); 
+                g *= Math.exp(-effectiveDust * 0.95); 
+                b *= Math.exp(-effectiveDust * 1.65); 
             } else { a = baseA; }
             if (star.initialMass > MASSIVE_STAR_THRESHOLD && star.stage === 'MS') { pType = 6.0; sSize *= 2.0; }
         } else if (modeId === 'infrared') {
@@ -2674,6 +2681,46 @@
         ctx.fillRect(0, 0, w, h);
     }
 
+    function drawDiffuseOldStellarDisks(ctx) {
+        if (!showEnhancedCore) return;
+        if (currentModeId === 'xray' || currentModeId === 'spectroscopy') return;
+        const m = highResMult;
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const p = getRawProjection(bh.x, bh.y, bh.z);
+            const sf = isOrthographicRender ? 1.0 : (1000 / (1000 + p.depth));
+            const sx = p.rawX * (scale * m) + (translateX * m) + centerX;
+            const sy = p.rawY * (scale * m) + (translateY * m) + centerY;
+            const diskR = Math.max(24 * m, galaxyRadius * sf * scale * m * 1.05);
+            if (diskR < 3 || sx < -diskR || sx > ctx.canvas.width + diskR || sy < -diskR || sy > ctx.canvas.height + diskR) continue;
+            const stage = g === 0 ? galaxyAStageSelect.value : galaxyBStageSelect.value;
+            const tilt = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+            const flatten = clamp(1.0 - 0.52 * tilt, 0.28, 1.0);
+            const angle = rotationY * Math.PI / 180;
+            let col = stage === 'new' ? [205, 215, 245] : stage === 'dying' ? [230, 145, 95] : [226, 178, 116];
+            let alpha = stage === 'new' ? 0.030 : stage === 'dying' ? 0.050 : 0.042;
+            if (currentModeId === 'infrared') { col = [255, 145, 70]; alpha *= 1.45; }
+            if (currentModeId === 'ultraviolet') { col = [95, 90, 210]; alpha *= stage === 'new' ? 0.65 : 0.22; }
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.rotate(angle);
+            ctx.scale(1.0, flatten);
+            const grad = ctx.createRadialGradient(0, 0, diskR * 0.08, 0, 0, diskR);
+            grad.addColorStop(0.0, `rgba(${col[0]},${col[1]},${col[2]},${alpha * 0.85})`);
+            grad.addColorStop(0.38, `rgba(${col[0]},${col[1]},${col[2]},${alpha * 0.42})`);
+            grad.addColorStop(0.72, `rgba(${col[0]},${col[1]},${col[2]},${alpha * 0.16})`);
+            grad.addColorStop(1.0, `rgba(${col[0]},${col[1]},${col[2]},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(0, 0, diskR, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
     function drawEnhancedGalaxyCores(ctx) {
         const realism = document.getElementById('tglRealism').checked;
         const m = highResMult;
@@ -2722,9 +2769,9 @@
             ctx.restore();
 
             if (realism && presetId !== 'ring' && currentModeId !== 'xray') {
-                const dustAlphaBase = currentModeId === 'infrared' ? 0.030 : currentModeId === 'ultraviolet' ? 0.48 : 0.34;
+                const dustAlphaBase = currentModeId === 'infrared' ? 0.020 : currentModeId === 'ultraviolet' ? 0.32 : 0.16;
                 const dustAlpha = clamp(dustAlphaBase * (0.25 + tilt) * dustVisualMult, 0.0, 0.45);
-                if (dustAlpha > 0.02) {
+                if (dustAlpha > 0.012) {
                     ctx.save();
                     ctx.globalCompositeOperation = 'source-over';
                     ctx.translate(sx, sy);
@@ -2942,6 +2989,7 @@
 
     function drawVisibleSpiralDustLanes(ctx) {
         if (!showEvolvingDust || !document.getElementById('tglRealism').checked) return;
+        if (dustVisualMult < 0.006) return;
         if (currentModeId !== 'visible' && currentModeId !== 'ultraviolet') return;
         ctx.save();
         ctx.globalCompositeOperation = 'multiply';
@@ -2953,7 +3001,7 @@
             const preset = GALAXY_PRESETS[presetId];
             if (!preset || preset.type !== 'spiral' || isPostMerger) continue;
             const armCount = Math.max(1, preset.armCount || 2);
-            const baseAlpha = currentModeId === 'ultraviolet' ? 0.34 : 0.25;
+            const baseAlpha = currentModeId === 'ultraviolet' ? 0.22 : 0.105;
             const tiltBoost = 0.65 + 0.85 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
             for (let arm = 0; arm < armCount; arm++) {
                 for (let lane = 0; lane < 2; lane++) {
@@ -2974,7 +3022,7 @@
                     }
                     const laneAlpha = clamp(baseAlpha * tiltBoost * dustVisualMult * (lane === 0 ? 1.0 : 0.55), 0.0, currentModeId === 'visible' ? 0.42 : 0.55);
                     ctx.strokeStyle = lane === 0 ? `rgba(18,11,7,${laneAlpha})` : `rgba(70,42,24,${laneAlpha * 0.75})`;
-                    ctx.lineWidth = Math.max(1.2 * m, (lane === 0 ? 9 : 5) * scale * m);
+                    ctx.lineWidth = Math.max(0.8 * m, (lane === 0 ? 5.5 : 3.0) * scale * m);
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
                     ctx.stroke();
@@ -3138,7 +3186,7 @@
     }
 
     function drawEvolvingDustClouds(ctx) {
-        if (!showEvolvingDust || currentModeId === 'xray') return;
+        if (!showEvolvingDust || currentModeId === 'xray' || dustVisualMult < 0.006) return;
         const maxDraw = currentModeId === 'visible' ? 2500 : 1800;
         let drawn = 0;
         ctx.save();
@@ -3153,9 +3201,9 @@
             const sr = Math.max(1, c.size * 2.5 * scale * highResMult);
             if (sr < 1.2 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
             let color, alpha;
-            if (currentModeId === 'visible') { color = [30, 20, 13]; alpha = clamp(ratio * 18 * dustVisualMult, 0.012, 0.19); ctx.globalCompositeOperation = 'multiply'; }
+            if (currentModeId === 'visible') { color = [34, 23, 15]; alpha = clamp(ratio * 8.0 * dustVisualMult, 0.0, 0.075); ctx.globalCompositeOperation = 'multiply'; }
             else if (currentModeId === 'infrared') { const w = clamp(((c.dustTemp || 20) - 20) / 260, 0, 1); color = [120 + w*135, 50 + w*80, 20]; alpha = clamp(ratio * 10 * (0.4 + w) * dustVisualMult, 0.01, 0.18); ctx.globalCompositeOperation = 'screen'; }
-            else if (currentModeId === 'ultraviolet') { color = [16, 8, 30]; alpha = clamp(ratio * 24 * dustVisualMult, 0.020, 0.28); ctx.globalCompositeOperation = 'multiply'; }
+            else if (currentModeId === 'ultraviolet') { color = [16, 8, 30]; alpha = clamp(ratio * 14 * dustVisualMult, 0.0, 0.20); ctx.globalCompositeOperation = 'multiply'; }
             else continue;
             const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
             grad.addColorStop(0, `rgba(${Math.round(color[0])},${Math.round(color[1])},${Math.round(color[2])},${alpha})`);
@@ -3511,6 +3559,7 @@
       }
       
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+      drawDiffuseOldStellarDisks(overlayCtx);
       if(showEnhancedCore) drawEnhancedGalaxyCores(overlayCtx);
       drawEvolvingDustClouds(overlayCtx);
       drawVisibleSpiralDustLanes(overlayCtx);
