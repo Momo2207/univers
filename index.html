@@ -366,8 +366,10 @@
         <label for="hotGasBrightness">Hot Gas Lum. Bias: <span id="hotGasBrightnessValue">0</span></label>
         <input type="range" id="hotGasBrightness" min="-1" max="3" step="0.1" value="0">
         
-        <label for="coldGasBrightness">Cold Gas Appearance: <span id="coldGasBrightnessValue">0</span></label>
+        <label for="coldGasBrightness">Cold Gas Diagnostic Overlay: <span id="coldGasBrightnessValue">0</span></label>
         <input type="range" id="coldGasBrightness" min="-1" max="3" step="0.1" value="0">
+        <label class="checkbox-label" style="margin-top:8px;"><input type="checkbox" id="showColdGasOverlay"> Show Cold Gas Diagnostic Overlay in Optical / Special Views</label>
+        <div class="help-text">Cold gas is not normally directly visible in optical galaxy images. Infrared and spectroscopy keep cold-gas tracing on by default.</div>
 
         <label for="dustBrightness">Dust Opacity Bias: <span id="dustBrightnessValue">0</span></label>
         <input type="range" id="dustBrightness" min="-1" max="3" step="0.01" value="0">
@@ -870,6 +872,7 @@
     let currentModeId = 'visible'; let currentMode = OBSERVATION_MODES[currentModeId];
     function isTelescopeMode(modeId = currentModeId) { return modeId === 'telescope'; }
     function isOpticalLikeMode(modeId = currentModeId) { return modeId === 'visible' || modeId === 'telescope'; }
+    function shouldRenderColdGasDiagnostic(modeId = currentModeId) { return showColdGasOverlay || modeId === 'infrared' || modeId === 'spectroscopy'; }
     function telescopeDesaturateRGB(r, g, b, amount = 0.45) {
         const l = r * 0.30 + g * 0.59 + b * 0.11;
         return [r * (1 - amount) + l * amount, g * (1 - amount) + l * amount, b * (1 - amount) + l * amount];
@@ -907,6 +910,7 @@
     document.getElementById('showAccretionDisks').addEventListener('change',(e)=>{showAccretionDisks=e.target.checked;});
     document.getElementById('showJetLobes').addEventListener('change',(e)=>{showJetLobes=e.target.checked;});
     document.getElementById('showEvolvingDust').addEventListener('change',(e)=>{showEvolvingDust=e.target.checked;});
+    document.getElementById('showColdGasOverlay').addEventListener('change',(e)=>{showColdGasOverlay=e.target.checked;});
     document.getElementById('showForegroundStars').addEventListener('change',(e)=>{showForegroundStars=e.target.checked;});
     document.getElementById('showBackgroundLensing').addEventListener('change',(e)=>{showBackgroundLensing=e.target.checked;});
     document.getElementById('useObservationSynthesis').addEventListener('change',(e)=>{useObservationSynthesis=e.target.checked;});
@@ -919,7 +923,7 @@
     let isDirectorMode=false; let trackingTarget = null;
     let chaseCamZoomTarget = 8.0;
     let showDarkMatter=true,showJets=true,showGrid=true,showStreaks=true,showBackgroundUniverse=true,showEnhancedCore=true;
-    let showHIIRegions=true,showAccretionDisks=true,showJetLobes=true,showEvolvingDust=true,showForegroundStars=true,showBackgroundLensing=true;
+    let showHIIRegions=true,showAccretionDisks=true,showJetLobes=true,showEvolvingDust=true,showForegroundStars=true,showBackgroundLensing=true,showColdGasOverlay=false;
     let useRealisticColors = true, useLeapfrog = true, useCinematicDepth = true;
     let useObservationSynthesis = true, reduceResolvedOldStars = true, showPopulationMaps = true, showGasPhaseMaps = true;
     let bgStars = [], bgGalaxies = [], foregroundStars = [];
@@ -2743,15 +2747,23 @@
         const dustAtt = getDustAttenuationForObject(cloud.x, cloud.y, cloud.z, modeId);
         const coldGain = clamp((coldGasVisualMult / 2.0), 0.2, 8.0);
         const contrast = coldGasContrastBoost;
+        const coldDiagnosticVisible = shouldRenderColdGasDiagnostic(modeId);
 
        if (isOpticalLikeMode(modeId)) {
             if (coldness > 0.55) {
-                // Distinct cold-gas tracer: teal / aqua and visibly diffuse, clearly separated from hot gas and stars.
-                r = 0.06;
-                g = 0.72 + 0.08 * Math.min(1.0, contrast - 0.9);
-                b = 0.50 + 0.10 * Math.min(1.0, contrast - 0.9);
-                a = (0.05 + 0.06 * coldness + Math.max(0, coldGain - 1.0) * 0.028) * shimmer;
-                cSize *= 0.24 + 0.16 * Math.min(2.0, coldGain);
+                if (coldDiagnosticVisible) {
+                    // Distinct cold-gas tracer: teal / aqua and visibly diffuse, clearly separated from hot gas and stars.
+                    r = 0.06;
+                    g = 0.72 + 0.08 * Math.min(1.0, contrast - 0.9);
+                    b = 0.50 + 0.10 * Math.min(1.0, contrast - 0.9);
+                    a = (0.05 + 0.06 * coldness + Math.max(0, coldGain - 1.0) * 0.028) * shimmer;
+                    cSize *= 0.24 + 0.16 * Math.min(2.0, coldGain);
+                } else {
+                    // In realistic optical views cold gas should be almost invisible; dust and H II regions carry the signal instead.
+                    r = 0.16; g = 0.13; b = 0.12;
+                    a = 0.0025 * shimmer;
+                    cSize *= 0.06;
+                }
             }
             else if (cloud.heat > 1000) {
                 r=0.72; g=0.28; b=0.95; a*=1.05; cSize *= 0.82;
@@ -2792,10 +2804,14 @@
         }
         else if (modeId === 'ultraviolet') {
             if (coldness > 0.55) {
-                // Diagnostic cold-gas tracer in UV: green-cyan so it stands apart from violet hot/young UV structures.
-                r = 0.18; g = 0.95; b = 0.52;
-                a = (0.045 + 0.045 * coldness + Math.max(0, coldGain - 1.0) * 0.026) * shimmer;
-                cSize *= 0.22 + 0.14 * Math.min(2.0, coldGain);
+                if (coldDiagnosticVisible) {
+                    // Diagnostic cold-gas tracer in UV: green-cyan so it stands apart from violet hot/young UV structures.
+                    r = 0.18; g = 0.95; b = 0.52;
+                    a = (0.045 + 0.045 * coldness + Math.max(0, coldGain - 1.0) * 0.026) * shimmer;
+                    cSize *= 0.22 + 0.14 * Math.min(2.0, coldGain);
+                } else {
+                    a = 0.0;
+                }
             }
             else if (cloud.heat > 40) {
                 r=0.5; g=0.0; b=1.0; a*=1.5;
@@ -2807,10 +2823,14 @@
         }
         else if (modeId === 'xray') {
             if (coldness > 0.55) {
-                // Faint diagnostic tracer only: real cold gas would be absent in X-ray, but this keeps it visible for interpretation.
-                r = 1.0; g = 0.08; b = 0.26;
-                a = (0.012 + Math.max(0, coldGain - 1.0) * 0.01) * shimmer;
-                cSize *= 0.16 + 0.10 * Math.min(1.5, coldGain);
+                if (coldDiagnosticVisible) {
+                    // Faint diagnostic tracer only: real cold gas would be absent in X-ray, but this keeps it visible for interpretation.
+                    r = 1.0; g = 0.08; b = 0.26;
+                    a = (0.012 + Math.max(0, coldGain - 1.0) * 0.01) * shimmer;
+                    cSize *= 0.16 + 0.10 * Math.min(1.5, coldGain);
+                } else {
+                    a = 0.0;
+                }
             }
             else if (cloud.heat > 1000) {
                 r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0);
@@ -2840,8 +2860,13 @@
             const rgb = telescopeDesaturateRGB(r, g, b, coldness > 0.55 ? 0.35 : 0.55);
             r = rgb[0]; g = rgb[1]; b = rgb[2];
             if (coldness > 0.55) {
-                a *= 0.58 + Math.max(0, coldGain - 1.0) * 0.08;
-                cSize *= 0.92;
+                if (coldDiagnosticVisible) {
+                    a *= 0.58 + Math.max(0, coldGain - 1.0) * 0.08;
+                    cSize *= 0.92;
+                } else {
+                    a *= 0.18;
+                    cSize *= 0.55;
+                }
             }
             else if (cloud.heat < 40) { a *= 0.08; cSize *= 0.45; }
             else if (cloud.heat < 900) { a *= 0.16; cSize *= 0.52; }
