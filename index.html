@@ -304,6 +304,7 @@
         <label for="observationFilter">Instrument / Filter:</label>
         <select id="observationFilter">
             <option value="visible" selected>Visible Light (Optical)</option>
+            <option value="telescope">Real Telescope (Long Exposure)</option>
             <option value="infrared">Infrared (Dust Pen.)</option>
             <option value="ultraviolet">Ultraviolet (Young Stars)</option>
             <option value="xray">X-Ray (High Energy)</option>
@@ -433,6 +434,7 @@
         <select id="parallelInstrument">
             <option value="none" selected>None</option>
             <option value="visible">Visible Light</option>
+            <option value="telescope">Real Telescope</option>
             <option value="infrared">Infrared</option>
             <option value="ultraviolet">Ultraviolet</option>
             <option value="xray">X-Ray</option>
@@ -858,6 +860,7 @@
 
     const OBSERVATION_MODES = {
         visible: { name: "Visible", desc: "Hubble-like optical imaging. Preserves color, reveals dust lanes via extinction, adds subtle diffraction.", psfCore: 60.0, psfHalo: 8.0, bloomStrength: 0.3, noiseStrength: 0.03, diffraction: 1.0, sparseMode: 0.0, bgFloor: [0.01, 0.015, 0.02], exposureGain: 1.0, exposureShoulder: 1.5 },
+        telescope: { name: "Real Telescope", desc: "Restrained long-exposure optical telescope view: smoother surface brightness, muted color, limited bloom, faint sensor noise and fewer resolved galaxy stars.", psfCore: 74.0, psfHalo: 13.5, bloomStrength: 0.08, noiseStrength: 0.012, diffraction: 0.18, sparseMode: 0.0, bgFloor: [0.006, 0.007, 0.010], exposureGain: 0.78, exposureShoulder: 2.35 },
         infrared: { name: "Infrared", desc: "JWST-like view. Penetrates dust, highlights warm gas/dust emission, softens point sources.", psfCore: 35.0, psfHalo: 5.0, bloomStrength: 0.6, noiseStrength: 0.06, diffraction: 0.4, sparseMode: 0.0, bgFloor: [0.04, 0.01, 0.005], exposureGain: 1.3, exposureShoulder: 1.2 },
         ultraviolet: { name: "Ultraviolet", desc: "GALEX-like view. Traces recent star formation and hot/young populations. Highly attenuated by dust.", psfCore: 50.0, psfHalo: 10.0, bloomStrength: 0.2, noiseStrength: 0.12, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.005, 0.005, 0.015], exposureGain: 1.5, exposureShoulder: 2.0 },
         xray: { name: "X-Ray", desc: "Chandra-like view. Sparse event rendering. Reveals only highly energetic sources (AGN, jets, remnants).", psfCore: 80.0, psfHalo: 15.0, bloomStrength: 0.0, noiseStrength: 0.4, diffraction: 0.0, sparseMode: 1.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 2.0, exposureShoulder: 1.0 },
@@ -865,6 +868,12 @@
     };
     
     let currentModeId = 'visible'; let currentMode = OBSERVATION_MODES[currentModeId];
+    function isTelescopeMode(modeId = currentModeId) { return modeId === 'telescope'; }
+    function isOpticalLikeMode(modeId = currentModeId) { return modeId === 'visible' || modeId === 'telescope'; }
+    function telescopeDesaturateRGB(r, g, b, amount = 0.45) {
+        const l = r * 0.30 + g * 0.59 + b * 0.11;
+        return [r * (1 - amount) + l * amount, g * (1 - amount) + l * amount, b * (1 - amount) + l * amount];
+    }
     
     const uiModeSelect = document.getElementById('observationFilter');
     const uiModeDesc = document.getElementById('instrumentDesc');
@@ -1147,6 +1156,7 @@
         if (modeId === 'ultraviolet') { tauScale = 2.15; maxTau = 1.25 + edgeOn * 1.85; }
         else if (modeId === 'infrared') { tauScale = 0.14; maxTau = 0.32; }
         else if (modeId === 'spectroscopy') { tauScale = 0.65; maxTau = 1.0; }
+        else if (isTelescopeMode(modeId)) { tauScale = 0.42; maxTau = 0.42 + edgeOn * 0.58; }
 
         const avgDustDepth = sample.tau > 0.0001 ? sample.depth : p.depth;
         const depthDelta = p.depth - avgDustDepth; // positive = source is behind the dust column
@@ -1163,9 +1173,9 @@
             return mixed * (1.0 - foregroundFraction) + screen * foregroundFraction;
         }
 
-        let rT = channelTransmission(modeId === 'visible' ? 0.55 : 1.0);
-        let gT = channelTransmission(modeId === 'visible' ? 0.85 : 1.0);
-        let bT = channelTransmission(modeId === 'visible' ? 1.22 : 1.0);
+        let rT = channelTransmission(isOpticalLikeMode(modeId) ? 0.55 : 1.0);
+        let gT = channelTransmission(isOpticalLikeMode(modeId) ? 0.85 : 1.0);
+        let bT = channelTransmission(isOpticalLikeMode(modeId) ? 1.22 : 1.0);
         let aT = channelTransmission(1.0);
         if (modeId === 'infrared') { rT = gT = bT = aT = Math.max(aT, 0.92); }
 
@@ -2633,7 +2643,7 @@
         const useRealism = document.getElementById('tglRealism').checked;
         const dustAtt = getDustAttenuationForObject(star.x, star.y, star.z, modeId);
 
-        if (modeId === 'visible') {
+        if (isOpticalLikeMode(modeId)) {
             if (useRealism && tglDust.checked) { 
                 a = baseA * dustAtt.alpha; 
                 r *= dustAtt.r; 
@@ -2657,7 +2667,7 @@
             a = baseA * 0.5;
         }
 
-        if (modeId === 'visible') {
+        if (isOpticalLikeMode(modeId)) {
             const popMod = getVisibleSpiralPopulationModifier(star.x, star.y, star.z, star.galaxyIndex);
             a *= popMod.alpha;
             sSize *= popMod.size;
@@ -2669,7 +2679,7 @@
             }
         }
 
-        if (useObservationSynthesis && reduceResolvedOldStars && (modeId === 'visible' || modeId === 'infrared')) {
+        if (useObservationSynthesis && reduceResolvedOldStars && (isOpticalLikeMode(modeId) || modeId === 'infrared')) {
             const isYoungTracer = (star.ageMyr < 180) || (star.initialMass > 5.0) || (star.temperature > 9000 && star.stage === 'MS');
             if (!isYoungTracer) {
                 const local = getNearestGalaxyContextForPoint(star.x, star.y, star.z, star.galaxyIndex);
@@ -2677,7 +2687,7 @@
                 // Most old stars are now represented by the diffuse population map; keep them as texture, not glitter.
                 a *= 0.52 - coreBlend * 0.16;
                 sSize *= 0.70 - coreBlend * 0.10;
-                if (modeId === 'visible') {
+                if (isOpticalLikeMode(modeId)) {
                     r = r * 0.68 + 1.0 * 0.32;
                     g = g * 0.68 + 0.78 * 0.32;
                     b = b * 0.68 + 0.48 * 0.32;
@@ -2697,6 +2707,21 @@
             }
         }
 
+        if (isTelescopeMode(modeId)) {
+            const isYoungTracer = (star.ageMyr < 120) || (star.initialMass > 7.0) || (star.temperature > 12000 && star.stage === 'MS');
+            const rgb = telescopeDesaturateRGB(r, g, b, isYoungTracer ? 0.38 : 0.62);
+            r = rgb[0]; g = rgb[1]; b = rgb[2];
+            if (isYoungTracer) {
+                a *= 0.46;
+                sSize *= 0.58;
+            } else {
+                a *= 0.18;
+                sSize *= 0.42;
+            }
+            // Real telescope images resolve only the brightest clusters in the target galaxy.
+            if (star.stage === 'GIANT' || star.stage === 'WD') a *= 0.55;
+        }
+
         return {r, g, b, a, size: sSize, type: pType};
     }
 
@@ -2714,7 +2739,7 @@
         const useRealism = document.getElementById('tglRealism').checked;
         const dustAtt = getDustAttenuationForObject(cloud.x, cloud.y, cloud.z, modeId);
 
-       if (modeId === 'visible') { 
+       if (isOpticalLikeMode(modeId)) { 
             if (cloud.heat > 1000) { 
                 r=0.72; g=0.28; b=0.95; a*=1.05; cSize *= 0.82; 
             } 
@@ -2726,7 +2751,7 @@
                 cSize *= 0.0065; 
             }
             
-            if (modeId === 'visible') {
+            if (isOpticalLikeMode(modeId)) {
                 const armMod = getVisibleSpiralPopulationModifier(cloud.x, cloud.y, cloud.z, cloud.galaxyIndex);
                 a *= clamp(armMod.alpha * 0.92, 0.35, 1.15);
                 cSize *= clamp(armMod.size, 0.85, 1.10);
@@ -2763,6 +2788,14 @@
             const depthMod = getDepthVisualModifier(cloud.x, cloud.y, cloud.z);
             a *= clamp(depthMod.alpha * (1.0 - depthMod.far * depthMod.strength * 0.18), 0.25, 1.25);
             cSize *= clamp(depthMod.size, 0.80, 1.18);
+        }
+
+        if (isTelescopeMode(modeId)) {
+            const rgb = telescopeDesaturateRGB(r, g, b, 0.55);
+            r = rgb[0]; g = rgb[1]; b = rgb[2];
+            if (cloud.heat < 40) { a *= 0.05; cSize *= 0.42; }
+            else if (cloud.heat < 900) { a *= 0.16; cSize *= 0.52; }
+            else { a *= 0.24; cSize *= 0.60; }
         }
 
         return {r, g, b, a, size: cSize, mult: visualMult};
@@ -2813,7 +2846,7 @@
         const py = translateY * 0.025 * m;
         const realism = document.getElementById('tglRealism').checked;
         const exposureBoost = clamp(currentExposure, 0.4, 2.5);
-        const modeMult = currentModeId === 'xray' ? 0.18 : currentModeId === 'ultraviolet' ? 0.55 : currentModeId === 'infrared' ? 1.25 : 1.0;
+        const modeMult = currentModeId === 'xray' ? 0.18 : currentModeId === 'ultraviolet' ? 0.55 : currentModeId === 'infrared' ? 1.25 : isTelescopeMode() ? 0.38 : 1.0;
 
         for (const g of bgGalaxies) {
             let alpha = (0.014 + g.brightness * 0.060) * modeMult * exposureBoost;
@@ -2874,6 +2907,13 @@
     }
 
     function getModePopulationStyle(stage) {
+        if (isTelescopeMode()) {
+            return stage === 'dying'
+                ? { old:[205,154,105], oldA:0.040, bulge:[226,184,132], bulgeA:0.060, young:[125,145,190], youngA:0.007, hii:[205,84,92], hiiA:0.006 }
+                : stage === 'new'
+                    ? { old:[178,180,196], oldA:0.032, bulge:[218,198,158], bulgeA:0.046, young:[132,154,208], youngA:0.020, hii:[218,82,96], hiiA:0.016 }
+                    : { old:[205,177,136], oldA:0.038, bulge:[232,202,154], bulgeA:0.058, young:[128,151,205], youngA:0.014, hii:[214,82,94], hiiA:0.011 };
+        }
         if (currentModeId === 'infrared') {
             return { old:[255,145,72], oldA:0.075, bulge:[255,176,92], bulgeA:0.105, young:[255,104,45], youngA:0.026, hii:[255,118,42], hiiA:0.030 };
         }
@@ -2902,13 +2942,14 @@
         let tauScale = 0.52;
         if (currentModeId === 'ultraviolet') tauScale = 1.95;
         if (currentModeId === 'infrared') tauScale = 0.10;
+        if (isTelescopeMode()) tauScale = 0.36;
         if (channelMode === 'hii') tauScale *= 1.18;
-        const maxTau = currentModeId === 'ultraviolet' ? 1.55 : currentModeId === 'infrared' ? 0.22 : 0.72 + edgeOn * 0.95;
+        const maxTau = currentModeId === 'ultraviolet' ? 1.55 : currentModeId === 'infrared' ? 0.22 : isTelescopeMode() ? 0.38 + edgeOn * 0.52 : 0.72 + edgeOn * 0.95;
         const tau = porousEffectiveTau(Math.min(maxTau, sample.tau * tauScale));
         const mixed = mixedMediumTransmission(tau);
         const screen = Math.exp(-tau);
         const trans = mixed * (1 - foreground) + screen * foreground;
-        const bluePenalty = currentModeId === 'visible' ? Math.exp(-tau * 0.28 * foreground) : 1.0;
+        const bluePenalty = isOpticalLikeMode() ? Math.exp(-tau * 0.28 * foreground) : 1.0;
         return { color:[color[0], color[1] * (0.96 + 0.04 * trans), color[2] * bluePenalty], alpha: alpha * (0.74 + 0.26 * trans) };
     }
 
@@ -3048,7 +3089,7 @@
     function drawGasPhaseEmissionMap(ctx) {
         if (currentModeId === 'spectroscopy') return;
         if (!gasClouds.length) return;
-        const maxSamples = currentModeId === 'visible' ? 1800 : 2600;
+        const maxSamples = isTelescopeMode() ? 1000 : isOpticalLikeMode() ? 1800 : 2600;
         const stride = Math.max(1, Math.ceil(gasClouds.length / maxSamples));
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
@@ -3057,7 +3098,7 @@
             if (!c || c.mass <= 0.5) continue;
             const heat = c.heat || 0;
             let color = null, alpha = 0, radiusMult = 1.0;
-            if (currentModeId === 'visible') {
+            if (isOpticalLikeMode()) {
                 if (heat < 40) continue; // cold gas is not visible light fog
                 color = heat > 900 ? [145,90,210] : [255,74,112];
                 alpha = heat > 900 ? 0.018 : 0.012;
@@ -3182,6 +3223,7 @@
             if (currentModeId === 'xray') { alpha = 0.015 + bh.accretionGlow * 0.05; core = [120, 230, 255]; }
             if (currentModeId === 'spectroscopy') alpha *= 0.55;
             if (useObservationSynthesis) alpha *= 0.68;
+            if (isTelescopeMode()) alpha *= 0.64;
 
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
@@ -3208,7 +3250,7 @@
             if (realism && presetId !== 'ring' && currentModeId !== 'xray') {
                 const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
                 const dustAlphaBase = currentModeId === 'infrared' ? 0.006 : currentModeId === 'ultraviolet' ? 0.13 : 0.040;
-                const dustAlpha = clamp(dustAlphaBase * (0.18 + edgeOn * 0.95) * dustVisualMult, 0.0, currentModeId === 'visible' ? 0.09 : 0.22);
+                const dustAlpha = clamp(dustAlphaBase * (0.18 + edgeOn * 0.95) * dustVisualMult, 0.0, isOpticalLikeMode() ? 0.09 : 0.22);
                 if (dustAlpha > 0.010) {
                     ctx.save();
                     ctx.globalCompositeOperation = 'source-over';
@@ -3459,7 +3501,7 @@
                         if (!started) { ctx.moveTo(sx, sy); started = true; }
                         else ctx.lineTo(sx, sy);
                     }
-                    const laneAlpha = clamp(baseAlpha * orientation * dustVisualMult * (lane === 0 ? 1.0 : 0.42), 0.0, currentModeId === 'visible' ? 0.10 : 0.20);
+                    const laneAlpha = clamp(baseAlpha * orientation * dustVisualMult * (lane === 0 ? 1.0 : 0.42), 0.0, isOpticalLikeMode() ? 0.10 : 0.20);
                     if (laneAlpha < 0.004) continue;
                     ctx.strokeStyle = lane === 0 ? `rgba(30,19,12,${laneAlpha})` : `rgba(82,51,30,${laneAlpha * 0.65})`;
                     ctx.lineWidth = Math.max(0.45 * m, (lane === 0 ? 2.15 : 1.15) * scale * m * (1.0 + edgeOn * 0.75));
@@ -3482,16 +3524,16 @@
             const p = getRawProjection(r.x, r.y, r.z);
             const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
             const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-            const sr = r.radius * scale * highResMult * (currentModeId === 'visible' ? 0.82 : 1.0);
+            const sr = r.radius * scale * highResMult * (isTelescopeMode() ? 0.46 : isOpticalLikeMode() ? 0.82 : 1.0);
             if (sr < 1 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
             let color = [255, 68, 108];
-            let alphaMult = currentModeId === 'visible' ? 0.78 : 1.0;
+            let alphaMult = isTelescopeMode() ? 0.38 : isOpticalLikeMode() ? 0.78 : 1.0;
             if (currentModeId === 'infrared') { color = [255, 130, 40]; alphaMult = 0.8; }
             else if (currentModeId === 'ultraviolet') { color = [120, 80, 255]; alphaMult = 2.0; }
             else if (currentModeId === 'xray') { color = [80, 200, 255]; alphaMult = 0.1; }
             let alpha = 0.115 * r.currentIntensity * alphaMult;
             const dust = getApproxDustDensity(r.x, r.y, r.z);
-            if (currentModeId === 'visible') alpha *= Math.exp(-dust * 0.8);
+            if (isOpticalLikeMode()) alpha *= Math.exp(-dust * 0.8);
             if (currentModeId === 'ultraviolet') alpha *= Math.exp(-dust * 2.0);
             const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
             grad.addColorStop(0.0, `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
@@ -3627,7 +3669,7 @@
 
     function drawEvolvingDustClouds(ctx) {
         if (!showEvolvingDust || currentModeId === 'xray' || dustVisualMult < 0.006) return;
-        const maxDraw = currentModeId === 'visible' ? 1600 : 2200;
+        const maxDraw = isTelescopeMode() ? 900 : isOpticalLikeMode() ? 1600 : 2200;
         const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
         let drawn = 0;
         ctx.save();
@@ -3639,15 +3681,15 @@
             const p = getRawProjection(c.x, c.y, c.z);
             const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
             const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-            const sr = Math.max(1, c.size * (currentModeId === 'visible' ? 1.45 : 2.45) * scale * highResMult);
+            const sr = Math.max(1, c.size * (isTelescopeMode() ? 0.85 : isOpticalLikeMode() ? 1.45 : 2.45) * scale * highResMult);
             if (sr < 1.2 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
             let color, alpha;
-            if (currentModeId === 'visible') {
+            if (isOpticalLikeMode()) {
                 // Visible dust is mostly subtractive attenuation in the particle pass. Only draw the densest foreground seams.
                 const localTau = estimateCloudOpticalDepth(c);
                 if (localTau < 0.045) continue;
                 color = [38, 25, 16];
-                alpha = clamp(localTau * 0.030 * (0.25 + edgeOn * 0.85), 0.0, 0.030);
+                alpha = clamp(localTau * (isTelescopeMode() ? 0.010 : 0.030) * (0.25 + edgeOn * 0.85), 0.0, isTelescopeMode() ? 0.010 : 0.030);
                 if (alpha < 0.003) continue;
                 ctx.globalCompositeOperation = 'multiply';
             }
