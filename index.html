@@ -411,6 +411,18 @@
       </div>
     </div>
     
+    <!-- Observation Synthesis -->
+    <div class="control-group">
+      <div class="group-header">Observation Synthesis <span class="group-toggle">+</span></div>
+      <div class="group-content collapsed">
+        <label class="checkbox-label"><input type="checkbox" id="useObservationSynthesis" checked> Synthesized Galaxy Light</label>
+        <div class="help-text">Builds diffuse old-star, bulge, young-arm, H II, hot-gas and dust-emission maps before telescope rendering.</div>
+        <label class="checkbox-label"><input type="checkbox" id="reduceResolvedOldStars" checked> Reduce Old-Star Sparkle</label>
+        <label class="checkbox-label"><input type="checkbox" id="showPopulationMaps" checked> Population Light Maps</label>
+        <label class="checkbox-label"><input type="checkbox" id="showGasPhaseMaps" checked> Gas Phase Emission Maps</label>
+      </div>
+    </div>
+    
     <!-- Export & Automation -->
     <div class="control-group">
       <div class="group-header">Export & Automation <span class="group-toggle">+</span></div>
@@ -888,6 +900,10 @@
     document.getElementById('showEvolvingDust').addEventListener('change',(e)=>{showEvolvingDust=e.target.checked;});
     document.getElementById('showForegroundStars').addEventListener('change',(e)=>{showForegroundStars=e.target.checked;});
     document.getElementById('showBackgroundLensing').addEventListener('change',(e)=>{showBackgroundLensing=e.target.checked;});
+    document.getElementById('useObservationSynthesis').addEventListener('change',(e)=>{useObservationSynthesis=e.target.checked;});
+    document.getElementById('reduceResolvedOldStars').addEventListener('change',(e)=>{reduceResolvedOldStars=e.target.checked;});
+    document.getElementById('showPopulationMaps').addEventListener('change',(e)=>{showPopulationMaps=e.target.checked;});
+    document.getElementById('showGasPhaseMaps').addEventListener('change',(e)=>{showGasPhaseMaps=e.target.checked;});
 
     let frameCount=0;
     let jetParticles=[],blackHoles=[],stars=[],gasClouds=[],remnants=[];let isPaused=false;
@@ -896,6 +912,7 @@
     let showDarkMatter=true,showJets=true,showGrid=true,showStreaks=true,showBackgroundUniverse=true,showEnhancedCore=true;
     let showHIIRegions=true,showAccretionDisks=true,showJetLobes=true,showEvolvingDust=true,showForegroundStars=true,showBackgroundLensing=true;
     let useRealisticColors = true, useLeapfrog = true, useCinematicDepth = true;
+    let useObservationSynthesis = true, reduceResolvedOldStars = true, showPopulationMaps = true, showGasPhaseMaps = true;
     let bgStars = [], bgGalaxies = [], foregroundStars = [];
     let hiiRegions = [], jetLobes = [];
     let hiiRegionIdCounter = 0, jetLobeIdCounter = 0;
@@ -2652,6 +2669,22 @@
             }
         }
 
+        if (useObservationSynthesis && reduceResolvedOldStars && (modeId === 'visible' || modeId === 'infrared')) {
+            const isYoungTracer = (star.ageMyr < 180) || (star.initialMass > 5.0) || (star.temperature > 9000 && star.stage === 'MS');
+            if (!isYoungTracer) {
+                const local = getNearestGalaxyContextForPoint(star.x, star.y, star.z, star.galaxyIndex);
+                const coreBlend = clamp(1.0 - local.rCyl / Math.max(1, bulgeRadius * 1.15), 0, 1);
+                // Most old stars are now represented by the diffuse population map; keep them as texture, not glitter.
+                a *= 0.52 - coreBlend * 0.16;
+                sSize *= 0.70 - coreBlend * 0.10;
+                if (modeId === 'visible') {
+                    r = r * 0.68 + 1.0 * 0.32;
+                    g = g * 0.68 + 0.78 * 0.32;
+                    b = b * 0.68 + 0.48 * 0.32;
+                }
+            }
+        }
+
         if (useRealism && useCinematicDepth && modeId !== 'xray') {
             const depthMod = getDepthVisualModifier(star.x, star.y, star.z);
             a *= depthMod.alpha;
@@ -2825,7 +2858,266 @@
         ctx.fillRect(0, 0, w, h);
     }
 
+
+    // --- OBSERVATION SYNTHESIS LAYER ---
+    // This layer treats the galaxy as simplified projected emission maps instead of only as bright particles.
+    // It keeps the simulation lightweight while creating a more telescope-like surface-brightness structure.
+    function projectGalaxyPoint(x, y, z) {
+        const p = getRawProjection(x, y, z);
+        return {
+            raw: p,
+            sx: p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX,
+            sy: p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY,
+            depth: p.depth,
+            sf: isOrthographicRender ? 1.0 : (1000 / (1000 + p.depth))
+        };
+    }
+
+    function getModePopulationStyle(stage) {
+        if (currentModeId === 'infrared') {
+            return { old:[255,145,72], oldA:0.075, bulge:[255,176,92], bulgeA:0.105, young:[255,104,45], youngA:0.026, hii:[255,118,42], hiiA:0.030 };
+        }
+        if (currentModeId === 'ultraviolet') {
+            return { old:[80,75,180], oldA: stage === 'new' ? 0.020 : 0.006, bulge:[110,92,230], bulgeA: stage === 'new' ? 0.022 : 0.006, young:[125,120,255], youngA:0.090, hii:[150,95,255], hiiA:0.090 };
+        }
+        if (currentModeId === 'xray') {
+            return { old:[40,90,130], oldA:0.000, bulge:[85,220,255], bulgeA:0.004, young:[60,210,255], youngA:0.010, hii:[80,220,255], hiiA:0.010 };
+        }
+        return stage === 'dying'
+            ? { old:[235,155,92], oldA:0.070, bulge:[246,184,112], bulgeA:0.115, young:[155,175,225], youngA:0.016, hii:[255,86,110], hiiA:0.012 }
+            : stage === 'new'
+                ? { old:[205,208,235], oldA:0.052, bulge:[235,220,182], bulgeA:0.076, young:[170,198,255], youngA:0.062, hii:[255,72,112], hiiA:0.050 }
+                : { old:[230,184,118], oldA:0.066, bulge:[248,202,137], bulgeA:0.108, young:[165,195,255], youngA:0.048, hii:[255,74,112], hiiA:0.040 };
+    }
+
+    function applyDiffuseDustAttenuationAtScreen(sx, sy, depth, color, alpha, channelMode='stellar') {
+        if (!document.getElementById('tglRealism').checked || !tglDust.checked || dustVisualMult <= 0.0005 || currentModeId === 'xray') {
+            return { color, alpha };
+        }
+        const sample = sampleProjectedDustField(sx, sy);
+        if (sample.tau <= 0.0001) return { color, alpha };
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+        const avgDustDepth = sample.depth;
+        const foreground = clamp(smoothstep(-70, 190, depth - avgDustDepth) * (0.12 + edgeOn * 0.62), 0, 0.82);
+        let tauScale = 0.52;
+        if (currentModeId === 'ultraviolet') tauScale = 1.95;
+        if (currentModeId === 'infrared') tauScale = 0.10;
+        if (channelMode === 'hii') tauScale *= 1.18;
+        const maxTau = currentModeId === 'ultraviolet' ? 1.55 : currentModeId === 'infrared' ? 0.22 : 0.72 + edgeOn * 0.95;
+        const tau = porousEffectiveTau(Math.min(maxTau, sample.tau * tauScale));
+        const mixed = mixedMediumTransmission(tau);
+        const screen = Math.exp(-tau);
+        const trans = mixed * (1 - foreground) + screen * foreground;
+        const bluePenalty = currentModeId === 'visible' ? Math.exp(-tau * 0.28 * foreground) : 1.0;
+        return { color:[color[0], color[1] * (0.96 + 0.04 * trans), color[2] * bluePenalty], alpha: alpha * (0.74 + 0.26 * trans) };
+    }
+
+    function drawEllipticalRadial(ctx, sx, sy, rx, ry, angle, stops, comp='screen') {
+        ctx.save();
+        ctx.globalCompositeOperation = comp;
+        ctx.translate(sx, sy);
+        ctx.rotate(angle);
+        ctx.scale(1, Math.max(0.05, ry / Math.max(rx, 0.001)));
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+        for (const s of stops) grad.addColorStop(s[0], s[1]);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, rx, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function drawSpiralPath(ctx, bh, preset, armIndex, r0, r1, offset, color, alpha, widthPc, comp='screen') {
+        const m = highResMult;
+        const armCount = Math.max(1, preset.armCount || 2);
+        ctx.save();
+        ctx.globalCompositeOperation = comp;
+        ctx.beginPath();
+        let started = false;
+        const step = 18;
+        for (let r = r0; r <= r1; r += step) {
+            const theta = (2 * Math.PI / armCount) * armIndex + Math.log(r / Math.max(40, bulgeRadius * 0.75)) / Math.tan(SPIRAL_PITCH) + patternAngle + offset;
+            const jitter = Math.sin(r * 0.033 + armIndex * 3.1 + offset * 7.0) * 3.0;
+            const x = bh.x + (r + jitter) * Math.cos(theta);
+            const y = bh.y + (r + jitter) * Math.sin(theta);
+            const z = bh.z + Math.sin(r * 0.017 + armIndex) * 2.5;
+            const p = projectGalaxyPoint(x, y, z);
+            if (!started) { ctx.moveTo(p.sx, p.sy); started = true; }
+            else ctx.lineTo(p.sx, p.sy);
+        }
+        ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+        ctx.lineWidth = Math.max(0.35 * m, widthPc * scale * m);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawYoungClusterKnots(ctx, bh, preset, gIndex, style) {
+        if (currentModeId === 'xray' || currentModeId === 'spectroscopy') return;
+        const m = highResMult;
+        const armCount = Math.max(1, preset.armCount || 2);
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let arm = 0; arm < armCount; arm++) {
+            for (let r = bulgeRadius * 0.86; r <= galaxyRadius * 1.04; r += 42) {
+                const seed = Math.sin(r * 12.9898 + arm * 78.233 + gIndex * 17.17) * 43758.5453;
+                const frac = seed - Math.floor(seed);
+                if (frac < 0.38) continue;
+                const theta = (2 * Math.PI / armCount) * arm + Math.log(r / Math.max(40, bulgeRadius * 0.75)) / Math.tan(SPIRAL_PITCH) + patternAngle + 0.20;
+                const radialScatter = (frac - 0.5) * 22;
+                const tangentialScatter = Math.sin(seed) * 0.055;
+                const x = bh.x + (r + radialScatter) * Math.cos(theta + tangentialScatter);
+                const y = bh.y + (r + radialScatter) * Math.sin(theta + tangentialScatter);
+                const z = bh.z + Math.sin(r * 0.025 + arm) * 3.0;
+                const p = projectGalaxyPoint(x, y, z);
+                const size = Math.max(1.2 * m, (7 + frac * 13) * scale * m);
+                if (p.sx < -size || p.sx > ctx.canvas.width + size || p.sy < -size || p.sy > ctx.canvas.height + size) continue;
+                let c = currentModeId === 'ultraviolet' ? [130,120,255] : currentModeId === 'infrared' ? [255,120,55] : [170,205,255];
+                let a = style.youngA * (0.38 + frac * 0.62) * (currentModeId === 'ultraviolet' ? 1.55 : 1.0);
+                const att = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, c, a, 'young');
+                c = att.color; a = att.alpha;
+                const grad = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, size);
+                grad.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`);
+                grad.addColorStop(0.42, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.25})`);
+                grad.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(p.sx, p.sy, size, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+        ctx.restore();
+    }
+
+    function drawObservationSynthesisMaps(ctx) {
+        if (!useObservationSynthesis) return;
+        if (!showPopulationMaps && !showGasPhaseMaps) return;
+        const m = highResMult;
+        if (showPopulationMaps && currentModeId !== 'spectroscopy') {
+            for (let g = 0; g < blackHoles.length; g++) {
+                const bh = blackHoles[g];
+                if (!bh) continue;
+                const stage = g === 0 ? galaxyAStageSelect.value : galaxyBStageSelect.value;
+                const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+                const preset = GALAXY_PRESETS[presetId];
+                const style = getModePopulationStyle(stage);
+                const p = projectGalaxyPoint(bh.x, bh.y, bh.z);
+                const tilt = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+                const flatten = clamp(1.0 - 0.56 * tilt, 0.25, 1.0);
+                const angle = rotationY * Math.PI / 180;
+                const diskR = Math.max(28 * m, galaxyRadius * p.sf * scale * m * 1.24);
+                if (diskR > 3 && p.sx > -diskR && p.sx < ctx.canvas.width + diskR && p.sy > -diskR && p.sy < ctx.canvas.height + diskR) {
+                    let oldCol = style.old.slice(); let oldA = style.oldA;
+                    const att = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, oldCol, oldA, 'old');
+                    oldCol = att.color; oldA = att.alpha;
+                    drawEllipticalRadial(ctx, p.sx, p.sy, diskR, diskR * flatten, angle, [
+                        [0.0, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},${oldA * 0.72})`],
+                        [0.32, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},${oldA * 0.46})`],
+                        [0.68, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},${oldA * 0.20})`],
+                        [1.0, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},0)`]
+                    ]);
+                }
+                const bulgeR = Math.max(18 * m, bulgeRadius * p.sf * scale * m * 1.05);
+                if (bulgeR > 2) {
+                    let bCol = style.bulge.slice(); let bA = style.bulgeA;
+                    const attB = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, bCol, bA, 'bulge');
+                    bCol = attB.color; bA = attB.alpha;
+                    drawEllipticalRadial(ctx, p.sx, p.sy, bulgeR, bulgeR * clamp(flatten + 0.08, 0.35, 1.0), angle, [
+                        [0.0, `rgba(255,238,190,${bA * 1.20})`],
+                        [0.18, `rgba(${bCol[0]},${bCol[1]},${bCol[2]},${bA * 0.92})`],
+                        [0.55, `rgba(${bCol[0]},${bCol[1]},${bCol[2]},${bA * 0.38})`],
+                        [1.0, `rgba(${bCol[0]},${bCol[1]},${bCol[2]},0)`]
+                    ]);
+                }
+                if (preset && preset.type === 'spiral' && !isPostMerger && currentModeId !== 'xray') {
+                    const armA = style.youngA * (stage === 'dying' ? 0.55 : 1.0);
+                    const armCol = style.young;
+                    for (let arm = 0; arm < Math.max(1, preset.armCount || 2); arm++) {
+                        drawSpiralPath(ctx, bh, preset, arm, bulgeRadius * 0.72, galaxyRadius * 1.10, 0.18, armCol, armA * 0.55, 28, 'screen');
+                        drawSpiralPath(ctx, bh, preset, arm, bulgeRadius * 0.86, galaxyRadius * 1.02, 0.26, armCol, armA * 0.32, 9, 'screen');
+                    }
+                    drawYoungClusterKnots(ctx, bh, preset, g, style);
+                }
+            }
+        }
+        if (showGasPhaseMaps) {
+            drawGasPhaseEmissionMap(ctx);
+            drawDustEmissionObservationMap(ctx);
+        }
+    }
+
+    function drawGasPhaseEmissionMap(ctx) {
+        if (currentModeId === 'spectroscopy') return;
+        if (!gasClouds.length) return;
+        const maxSamples = currentModeId === 'visible' ? 1800 : 2600;
+        const stride = Math.max(1, Math.ceil(gasClouds.length / maxSamples));
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let i = 0; i < gasClouds.length; i += stride) {
+            const c = gasClouds[i];
+            if (!c || c.mass <= 0.5) continue;
+            const heat = c.heat || 0;
+            let color = null, alpha = 0, radiusMult = 1.0;
+            if (currentModeId === 'visible') {
+                if (heat < 40) continue; // cold gas is not visible light fog
+                color = heat > 900 ? [145,90,210] : [255,74,112];
+                alpha = heat > 900 ? 0.018 : 0.012;
+                radiusMult = heat > 900 ? 1.25 : 0.68;
+            } else if (currentModeId === 'ultraviolet') {
+                if (heat < 35) continue;
+                color = [120,80,255]; alpha = clamp(0.020 + heat / 120000, 0.012, 0.065); radiusMult = 0.92;
+            } else if (currentModeId === 'xray') {
+                if (heat < 800) continue;
+                color = [80,220,255]; alpha = clamp(0.018 + heat / 160000, 0.015, 0.09); radiusMult = 1.15;
+            } else if (currentModeId === 'infrared') {
+                if (heat > 1200) continue;
+                color = [255,112,38]; alpha = 0.010; radiusMult = 1.3;
+            }
+            if (!color) continue;
+            const p = projectGalaxyPoint(c.x, c.y, c.z);
+            const sr = Math.max(1.0, c.size * radiusMult * scale * highResMult);
+            if (sr < 1 || p.sx < -sr || p.sx > ctx.canvas.width + sr || p.sy < -sr || p.sy > ctx.canvas.height + sr) continue;
+            const att = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, color, alpha, heat > 40 ? 'hii' : 'gas');
+            color = att.color; alpha = att.alpha;
+            if (alpha < 0.002) continue;
+            const grad = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, sr);
+            grad.addColorStop(0, `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
+            grad.addColorStop(0.55, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.22})`);
+            grad.addColorStop(1, `rgba(${color[0]},${color[1]},${color[2]},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawDustEmissionObservationMap(ctx) {
+        if (!showEvolvingDust || !document.getElementById('tglRealism').checked || dustVisualMult <= 0.0005) return;
+        if (currentModeId !== 'infrared') return;
+        const maxSamples = 2400;
+        const stride = Math.max(1, Math.ceil(gasClouds.length / maxSamples));
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let i = 0; i < gasClouds.length; i += stride) {
+            const c = gasClouds[i];
+            if (!c || !c.dustMass || c.mass <= 0.5) continue;
+            const ratio = c.dustMass / Math.max(c.mass, 0.001);
+            if (ratio < 0.00035) continue;
+            const warm = clamp(((c.dustTemp || 20) - 18) / 260, 0, 1);
+            const alpha = clamp(ratio * 8.5 * dustVisualMult * (0.28 + warm), 0.002, 0.09);
+            const p = projectGalaxyPoint(c.x, c.y, c.z);
+            const sr = Math.max(1.2, c.size * (2.0 + warm * 2.2) * scale * highResMult);
+            if (p.sx < -sr || p.sx > ctx.canvas.width + sr || p.sy < -sr || p.sy > ctx.canvas.height + sr) continue;
+            const col = [170 + warm * 85, 72 + warm * 70, 26];
+            const grad = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, sr);
+            grad.addColorStop(0, `rgba(${Math.round(col[0])},${Math.round(col[1])},${Math.round(col[2])},${alpha})`);
+            grad.addColorStop(1, `rgba(${Math.round(col[0])},${Math.round(col[1])},${Math.round(col[2])},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
     function drawDiffuseOldStellarDisks(ctx) {
+        if (useObservationSynthesis) return;
         if (!showEnhancedCore) return;
         if (currentModeId === 'xray' || currentModeId === 'spectroscopy') return;
         const m = highResMult;
@@ -2889,6 +3181,7 @@
             if (currentModeId === 'ultraviolet') { core = [110, 95, 255]; alpha *= stage === 'new' ? 1.05 : 0.35; }
             if (currentModeId === 'xray') { alpha = 0.015 + bh.accretionGlow * 0.05; core = [120, 230, 255]; }
             if (currentModeId === 'spectroscopy') alpha *= 0.55;
+            if (useObservationSynthesis) alpha *= 0.68;
 
             ctx.save();
             ctx.globalCompositeOperation = 'screen';
@@ -3644,7 +3937,10 @@
 
       if(!isPaused && !isCapturingSequence) updatePhysics(physicsSteps);
       
+      totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
+      buildProjectedDustField();
       drawBackgroundUniverse(bgCtx);
+      drawObservationSynthesisMaps(bgCtx);
       gl.clearColor(0.0, 0.0, 0.0, 0.0); 
       gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
       
@@ -3668,9 +3964,6 @@
       gl.uniform1f(uSparseLoc, currentMode.sparseMode); gl.uniform1f(uGainLoc, currentMode.exposureGain); gl.uniform1f(uShoulderLoc, currentMode.exposureShoulder);
       gl.uniform1f(uIsOrthoLoc, isOrthographicRender ? 1.0 : 0.0); 
       
-      totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
-      buildProjectedDustField();
-
       let pIdx = 0;
       function addPoint(x,y,z,size,type,r,g,b,a) {
           if(pIdx >= MAX_RENDER_PARTICLES) return;
