@@ -1050,7 +1050,111 @@
     let dataRecordBuffer = [];
     const MAX_RECORD_ROWS = 5000;
     let dataRecordPart = 1;
+    const DATA_RECORD_HEADERS = [
+        "time_myr", "stability_index", "total_energy", "kinetic_energy", "potential_energy",
+        "primary_bh_mass_msun", "star_count", "gas_cloud_count", "stellar_mass_msun", "gas_mass_msun",
+        "instant_sfr_msun_per_yr", "cold_gas_mass_msun", "hot_gas_mass_msun", "cold_gas_fraction", "bh_accretion_rate",
+        "stellar_metallicity_gradient", "gas_metallicity_gradient",
+        "rotation_radii_pc", "rotation_model_total_km_s", "rotation_baryonic_km_s", "rotation_dark_matter_km_s", "rotation_star_median_km_s", "rotation_gas_median_km_s",
+        "sfr_history_time_myr", "sfr_history_msun_per_yr",
+        "metallicity_radii_pc", "stellar_metallicity_z", "gas_metallicity_z",
+        "observation_filter", "galaxy_a_type", "galaxy_a_stage", "galaxy_b_type", "galaxy_b_stage", "simulation_mode"
+    ];
     let cosmologicalInflowReservoir = 0;
+
+    function csvEscape(value) {
+        if (value === null || value === undefined) return "";
+        let str = String(value);
+        if (str.includes('"')) str = str.replace(/"/g, '""');
+        if (/[",\r\n;]/.test(str)) return `"${str}"`;
+        return str;
+    }
+
+    function makeExcelCsv(rows) {
+        // UTF-8 BOM and sep=, make the file open correctly in Excel, including German regional settings.
+        return "\uFEFFsep=,\r\n" + rows.map(row => row.map(csvEscape).join(",")).join("\r\n") + "\r\n";
+    }
+
+    function downloadTextFile(filename, textContent, mimeType = "text/csv;charset=utf-8;") {
+        const blob = new Blob([textContent], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+
+    function getDataRecordRow() {
+        let timeMyr = elapsedTime / 1e6;
+        const energy = computeTotalEnergy([...stars, ...blackHoles, ...gasClouds]);
+        stabilityIndex = Math.min(100, Math.max(0, (energy.kinetic / Math.max(Math.abs(energy.potential), 1e-9)) * 100));
+        let starGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.starFit.b : 0;
+        let gasGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.gasFit.b : 0;
+        let tStarMass = stars.reduce((sum, s) => sum + (Number.isFinite(s.mass) ? s.mass : 0), 0);
+
+        let rCurv = scienceState.rotationCurve || {radii:[], modelTotal:[], modelBaryon:[], modelDarkMatter:[], starMedian:[], gasMedian:[]};
+        let mGrad = scienceState.metallicityGradient || {radii:[], starZ:[], gasZ:[]};
+        let sHist = scienceState.sfr.history || [];
+
+        return [
+            timeMyr.toFixed(2), stabilityIndex.toFixed(2), lastEnergy.total.toExponential(4), lastEnergy.kinetic.toExponential(4), lastEnergy.potential.toExponential(4),
+            blackHoles[0] ? blackHoles[0].mass.toFixed(2) : 0, stars.length, gasClouds.length, tStarMass.toFixed(2), totalGasMassCached.toFixed(2),
+            instantaneousSFR.toFixed(4), coldGasMass.toFixed(2), hotGasMass.toFixed(2), (coldGasMass/(coldGasMass+hotGasMass+0.001)).toFixed(4), bhAccretionRateLast.toFixed(6),
+            starGrad.toFixed(6), gasGrad.toFixed(6),
+
+            JSON.stringify(rCurv.radii || []),
+            JSON.stringify(rCurv.modelTotal || []),
+            JSON.stringify(rCurv.modelBaryon || []),
+            JSON.stringify(rCurv.modelDarkMatter || []),
+            JSON.stringify(rCurv.starMedian || []),
+            JSON.stringify(rCurv.gasMedian || []),
+
+            JSON.stringify(sHist.map(h=>h.tMid)),
+            JSON.stringify(sHist.map(h=>h.sfrMass)),
+
+            JSON.stringify(mGrad.radii || []),
+            JSON.stringify(mGrad.starZ || []),
+            JSON.stringify(mGrad.gasZ || []),
+
+            currentModeId,
+            galaxyATypeSelect.value,
+            galaxyAStageSelect.value,
+            galaxyBTypeSelect.value,
+            galaxyBStageSelect.value,
+            simModeSelect.value
+        ];
+    }
+
+    function updateRecordStatus(textOverride = null) {
+        const status = document.getElementById('recordStatus');
+        if (!status) return;
+        status.style.display = 'block';
+        if (textOverride) {
+            status.textContent = textOverride;
+            return;
+        }
+        const partInfo = dataRecordPart > 1 ? ` part ${dataRecordPart}` : "";
+        status.textContent = isDataRecording ? `Recording${partInfo}... (${dataRecordBuffer.length} rows buffered)` : `CSV export ready. ${dataRecordBuffer.length} rows buffered.`;
+    }
+
+    function flushDataRecordBuffer(finalFlush = true) {
+        if (!dataRecordBuffer.length) {
+            if (finalFlush) updateRecordStatus("No rows recorded yet.");
+            return;
+        }
+        const rows = [DATA_RECORD_HEADERS, ...dataRecordBuffer];
+        const csv = makeExcelCsv(rows);
+        const timeStamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const filename = `galaxy_data_log_${timeStamp}_part${String(dataRecordPart).padStart(2, "0")}.csv`;
+        downloadTextFile(filename, csv);
+        dataRecordBuffer = [];
+        dataRecordPart += 1;
+        if (finalFlush) updateRecordStatus("CSV exported. Recording stopped.");
+        else updateRecordStatus(`CSV part exported. Continuing with part ${dataRecordPart}.`);
+    }
     
     const inflowRateSlider = document.getElementById('inflowRate');
     const inflowRateValue = document.getElementById('inflowRateValue');
@@ -4388,41 +4492,9 @@
           updateSciencePanels();
 
           if (isDataRecording) {
-              let timeMyr = elapsedTime / 1e6;
-              const energy=computeTotalEnergy([...stars, ...blackHoles, ...gasClouds]);
-              stabilityIndex=Math.min(100,Math.max(0,(energy.kinetic/Math.abs(energy.potential))*100));
-              let starGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.starFit.b : 0;
-              let gasGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.gasFit.b : 0;
-              let tStarMass = stars.reduce((sum, s) => sum + s.mass, 0);
-              
-              let rCurv = scienceState.rotationCurve || {radii:[], modelTotal:[], modelBaryon:[], modelDarkMatter:[], starMedian:[], gasMedian:[]};
-              let mGrad = scienceState.metallicityGradient || {radii:[], starZ:[], gasZ:[]};
-              let sHist = scienceState.sfr.history || [];
+              dataRecordBuffer.push(getDataRecordRow());
+              updateRecordStatus();
 
-              let row = [
-                  timeMyr.toFixed(2), stabilityIndex.toFixed(2), lastEnergy.total.toExponential(4), lastEnergy.kinetic.toExponential(4), lastEnergy.potential.toExponential(4),
-                  blackHoles[0] ? blackHoles[0].mass.toFixed(2) : 0, stars.length, gasClouds.length, tStarMass.toFixed(2), totalGasMassCached.toFixed(2),
-                  instantaneousSFR.toFixed(4), coldGasMass.toFixed(2), hotGasMass.toFixed(2), (coldGasMass/(coldGasMass+hotGasMass+0.001)).toFixed(4), bhAccretionRateLast.toFixed(6),
-                  starGrad.toFixed(6), gasGrad.toFixed(6),
-                  
-                  `"${JSON.stringify(rCurv.radii)}"`,
-                  `"${JSON.stringify(rCurv.modelTotal)}"`,
-                  `"${JSON.stringify(rCurv.modelBaryon)}"`,
-                  `"${JSON.stringify(rCurv.modelDarkMatter)}"`,
-                  `"${JSON.stringify(rCurv.starMedian)}"`,
-                  `"${JSON.stringify(rCurv.gasMedian)}"`,
-                  
-                  `"${JSON.stringify(sHist.map(h=>h.tMid))}"`,
-                  `"${JSON.stringify(sHist.map(h=>h.sfrMass))}"`,
-                  
-                  `"${JSON.stringify(mGrad.radii)}"`,
-                  `"${JSON.stringify(mGrad.starZ)}"`,
-                  `"${JSON.stringify(mGrad.gasZ)}"`
-              ];
-              
-              dataRecordBuffer.push(row.join(","));
-              document.getElementById('recordStatus').textContent = `Recording... (${dataRecordBuffer.length} rows)`;
-              
               if (dataRecordBuffer.length >= MAX_RECORD_ROWS) {
                   flushDataRecordBuffer(false);
               }
@@ -4752,6 +4824,24 @@
     // FIX: 'mouseup' never fires on touch devices; 'change' fires on release for both mouse and touch.
     starCountSlider.addEventListener('change', initSimulation); gasAmountSlider.addEventListener('change', initSimulation);
     takeScreenshotButton.addEventListener('click', () => takeCustomScreenshot(false));
+
+    const recordDataBtn = document.getElementById('recordDataBtn');
+    recordDataBtn.addEventListener('click', () => {
+        if (!isDataRecording) {
+            isDataRecording = true;
+            dataRecordBuffer = [];
+            dataRecordPart = 1;
+            recordDataBtn.textContent = "Stop & Export CSV Data Log";
+            recordDataBtn.classList.add("btn-danger");
+            updateRecordStatus("Recording... (0 rows buffered)");
+        } else {
+            isDataRecording = false;
+            recordDataBtn.textContent = "Start CSV Data Log";
+            recordDataBtn.classList.remove("btn-danger");
+            flushDataRecordBuffer(true);
+        }
+    });
+
     
     pauseSimButton.addEventListener('click', () => { 
         isPaused = !isPaused; pauseSimButton.textContent = isPaused ? "▶ Resume Simulation" : "⏸ Pause Simulation"; 
@@ -4790,6 +4880,14 @@
     });
 
     window.addEventListener('mouseup', () => { isCanvasMouseDown = false; isDragging = false; isRotating = false; });
+
+    window.addEventListener('beforeunload', (e) => {
+        if (isDataRecording && dataRecordBuffer.length > 0) {
+            e.preventDefault();
+            e.returnValue = "A CSV data log is still recording. Stop and export it before leaving.";
+        }
+    });
+
     
     glCanvas.addEventListener('click', (e) => {
         if (!isPaused) return; 
