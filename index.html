@@ -1001,10 +1001,158 @@
     let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
 
     function mapDustBiasToMultiplier(val) {
-        // Negative dust bias should behave like a true fade-out, not just a small linear reduction.
-        // At -0.5 this leaves 25% dust; at -0.9 only 1%; at -1 dust is fully off.
-        if (val < 0) return Math.pow(Math.max(0, 1.0 + val), 2.0);
-        return 1.0 + val;
+        // Radiative-transfer style control: this scales optical depth, not black overlay opacity.
+        // Negative values fade dust aggressively; at -1 it is visually off. Positive values raise tau logarithmically.
+        if (val <= -0.99) return 0.0;
+        if (val < 0) return Math.pow(Math.max(0, 1.0 + val), 2.2);
+        return Math.pow(10, val * 0.33);
+    }
+
+    const DUST_FIELD_SIZE = 96;
+    let dustTauField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
+    let dustDepthField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
+    let dustTempField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
+    let dustFieldBuilt = false;
+
+    function smoothstep(edge0, edge1, x) {
+        const t = clamp((x - edge0) / Math.max(0.0001, edge1 - edge0), 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    function clearDustField() {
+        dustTauField.fill(0);
+        dustDepthField.fill(0);
+        dustTempField.fill(0);
+        dustFieldBuilt = false;
+    }
+
+    function estimateCloudOpticalDepth(cloud) {
+        if (!cloud || !cloud.mass || !cloud.dustMass) return 0;
+        const ratio = cloud.dustMass / Math.max(cloud.mass, 0.001);
+        if (ratio < 0.00035) return 0;
+        const massFactor = clamp(Math.pow(cloud.mass / 140.0, 0.22), 0.55, 1.85);
+        return clamp(ratio * 24.0 * massFactor * dustVisualMult, 0.0, 0.85);
+    }
+
+    function buildProjectedDustField() {
+        clearDustField();
+        if (!showEvolvingDust || !document.getElementById('tglRealism').checked || !tglDust.checked || dustVisualMult <= 0.0005) return;
+        const w = glCanvas.width || overlayCanvas.width;
+        const h = glCanvas.height || overlayCanvas.height;
+        if (!w || !h) return;
+
+        const maxCloudsForField = 6500;
+        const stride = Math.max(1, Math.ceil(gasClouds.length / maxCloudsForField));
+
+        for (let i = 0; i < gasClouds.length; i += stride) {
+            const c = gasClouds[i];
+            const tauCloud = estimateCloudOpticalDepth(c);
+            if (tauCloud <= 0.0001) continue;
+
+            const p = getRawProjection(c.x, c.y, c.z);
+            const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+            const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+            if (sx < -80 || sx > w + 80 || sy < -80 || sy > h + 80) continue;
+
+            const gx = Math.floor((sx / w) * DUST_FIELD_SIZE);
+            const gy = Math.floor((sy / h) * DUST_FIELD_SIZE);
+            const screenR = Math.max(1.0, c.size * 2.0 * scale * highResMult);
+            const mapR = clamp(Math.ceil((screenR / Math.max(w, h)) * DUST_FIELD_SIZE), 1, 4);
+            const sigma2 = Math.max(1.0, mapR * mapR * 0.72);
+            const dustTemp = c.dustTemp || 22;
+
+            for (let yy = gy - mapR; yy <= gy + mapR; yy++) {
+                if (yy < 0 || yy >= DUST_FIELD_SIZE) continue;
+                for (let xx = gx - mapR; xx <= gx + mapR; xx++) {
+                    if (xx < 0 || xx >= DUST_FIELD_SIZE) continue;
+                    const dx = xx - gx, dy = yy - gy;
+                    const weight = Math.exp(-(dx*dx + dy*dy) / sigma2);
+                    if (weight < 0.04) continue;
+                    const idx = yy * DUST_FIELD_SIZE + xx;
+                    const addTau = tauCloud * weight;
+                    dustTauField[idx] += addTau;
+                    dustDepthField[idx] += addTau * p.depth;
+                    dustTempField[idx] += addTau * dustTemp;
+                }
+            }
+        }
+        dustFieldBuilt = true;
+    }
+
+    function sampleProjectedDustField(sx, sy) {
+        if (!dustFieldBuilt) return { tau: 0, depth: 0, temp: 22 };
+        const w = glCanvas.width || overlayCanvas.width;
+        const h = glCanvas.height || overlayCanvas.height;
+        if (!w || !h || sx < 0 || sy < 0 || sx >= w || sy >= h) return { tau: 0, depth: 0, temp: 22 };
+
+        const fx = (sx / w) * (DUST_FIELD_SIZE - 1);
+        const fy = (sy / h) * (DUST_FIELD_SIZE - 1);
+        const x0 = Math.floor(fx), y0 = Math.floor(fy);
+        const x1 = Math.min(DUST_FIELD_SIZE - 1, x0 + 1);
+        const y1 = Math.min(DUST_FIELD_SIZE - 1, y0 + 1);
+        const tx = fx - x0, ty = fy - y0;
+
+        function read(arr, x, y) { return arr[y * DUST_FIELD_SIZE + x]; }
+        const w00 = (1-tx)*(1-ty), w10 = tx*(1-ty), w01 = (1-tx)*ty, w11 = tx*ty;
+        const tau = read(dustTauField,x0,y0)*w00 + read(dustTauField,x1,y0)*w10 + read(dustTauField,x0,y1)*w01 + read(dustTauField,x1,y1)*w11;
+        if (tau <= 0.00001) return { tau: 0, depth: 0, temp: 22 };
+        const depthWeighted = read(dustDepthField,x0,y0)*w00 + read(dustDepthField,x1,y0)*w10 + read(dustDepthField,x0,y1)*w01 + read(dustDepthField,x1,y1)*w11;
+        const tempWeighted = read(dustTempField,x0,y0)*w00 + read(dustTempField,x1,y0)*w10 + read(dustTempField,x0,y1)*w01 + read(dustTempField,x1,y1)*w11;
+        return { tau, depth: depthWeighted / tau, temp: tempWeighted / tau };
+    }
+
+    function mixedMediumTransmission(tau) {
+        if (tau <= 0.0001) return 1.0;
+        return (1.0 - Math.exp(-tau)) / tau;
+    }
+
+    function porousEffectiveTau(tau, porosity = 0.64) {
+        // Clumpy dust leaves statistical holes, so the same dust mass does not behave like a solid screen.
+        return -Math.log(clamp(porosity + (1.0 - porosity) * Math.exp(-tau), 0.0001, 1.0));
+    }
+
+    function getDustAttenuationForObject(x, y, z, modeId) {
+        if (!document.getElementById('tglRealism').checked || !tglDust.checked || dustVisualMult <= 0.0005 || modeId === 'xray') {
+            return { alpha: 1, r: 1, g: 1, b: 1, tau: 0, foreground: 0, temp: 22 };
+        }
+
+        const p = getRawProjection(x, y, z);
+        const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+        const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+        const sample = sampleProjectedDustField(sx, sy);
+        const analyticHint = getAnalyticDustHint(x, y, z) * 0.12;
+        let tauColumn = sample.tau + analyticHint;
+        if (!showEvolvingDust) tauColumn = analyticHint;
+        if (tauColumn <= 0.0001) return { alpha: 1, r: 1, g: 1, b: 1, tau: 0, foreground: 0, temp: 22 };
+
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+        let tauScale = 0.72, maxTau = 0.55 + edgeOn * 1.35;
+        if (modeId === 'ultraviolet') { tauScale = 2.15; maxTau = 1.25 + edgeOn * 1.85; }
+        else if (modeId === 'infrared') { tauScale = 0.14; maxTau = 0.32; }
+        else if (modeId === 'spectroscopy') { tauScale = 0.65; maxTau = 1.0; }
+
+        const avgDustDepth = sample.tau > 0.0001 ? sample.depth : p.depth;
+        const depthDelta = p.depth - avgDustDepth; // positive = source is behind the dust column
+        let foregroundFraction = sample.tau > 0.0001 ? smoothstep(-45, 170, depthDelta) : 0.0;
+        // Face-on disks are mostly mixed star+dust media. Edge-on disks behave more like foreground screens.
+        foregroundFraction *= (0.18 + edgeOn * 0.72);
+        foregroundFraction = clamp(foregroundFraction, 0, 0.92);
+
+        function channelTransmission(channelScale) {
+            const rawTau = Math.min(maxTau, tauColumn * tauScale * channelScale);
+            const effTau = porousEffectiveTau(rawTau);
+            const mixed = mixedMediumTransmission(effTau);
+            const screen = Math.exp(-effTau);
+            return mixed * (1.0 - foregroundFraction) + screen * foregroundFraction;
+        }
+
+        let rT = channelTransmission(modeId === 'visible' ? 0.55 : 1.0);
+        let gT = channelTransmission(modeId === 'visible' ? 0.85 : 1.0);
+        let bT = channelTransmission(modeId === 'visible' ? 1.22 : 1.0);
+        let aT = channelTransmission(1.0);
+        if (modeId === 'infrared') { rT = gT = bT = aT = Math.max(aT, 0.92); }
+
+        return { alpha: aT, r: rT, g: gT, b: bT, tau: Math.min(maxTau, tauColumn * tauScale), foreground: foregroundFraction, temp: sample.temp || 22 };
     }
     
     hotGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(hotGasBrightnessSlider.value); hotGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; hotGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
@@ -2340,42 +2488,43 @@
         captureScreenshotRequest = { pending: true, mult: nextReq.mult, label: nextReq.label };
     }
 
-    function getApproxDustDensity(x, y, z) {
+    function getAnalyticDustHint(x, y, z) {
         let bestG = 0; let minDist = Infinity;
         for(let g=0; g<blackHoles.length; g++){
             if(!blackHoles[g]) continue;
             let dSq = Math.pow(x-blackHoles[g].x, 2) + Math.pow(y-blackHoles[g].y, 2);
             if(dSq < minDist){ minDist = dSq; bestG = g; }
         }
-        
         const bh = blackHoles[bestG];
+        if (!bh) return 0;
         const lx = x - bh.x; const ly = y - bh.y; const lz = z - bh.z;
-
         const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly));
-        const zDensity = Math.exp(-Math.abs(lz) / 15.0); 
-        
+        const zDensity = Math.exp(-Math.abs(lz) / 22.0);
         const presetId = bestG === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
         const preset = GALAXY_PRESETS[presetId];
-        
         let rDensity = 0;
-        
         if (presetId === "ring") {
             const ringRadius = galaxyRadius * 0.75;
-            rDensity = Math.exp(-Math.pow(r_cyl - ringRadius, 2) / 1500.0) * 1.5; 
-        } else if (preset.type === "spiral" && !isPostMerger) {
-            let coreClearance = Math.min(1.0, Math.pow(r_cyl / (bulgeRadius * 1.0), 2.0));
-            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6)) * coreClearance;
-            if (r_cyl > 50 && r_cyl < galaxyRadius * 1.2) {
+            rDensity = Math.exp(-Math.pow(r_cyl - ringRadius, 2) / 2400.0) * 0.65;
+        } else if (preset && preset.type === "spiral" && !isPostMerger) {
+            const coreClearance = Math.min(1.0, Math.pow(r_cyl / (bulgeRadius * 0.95), 2.0));
+            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.72)) * coreClearance * 0.35;
+            if (r_cyl > 60 && r_cyl < galaxyRadius * 1.10) {
                 const theta = Math.atan2(ly, lx);
                 const phase = preset.armCount * (theta - patternAngle) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
-                const dustLane = Math.max(0, Math.cos(phase + 1.0));
-                rDensity += dustLane * Math.exp(-r_cyl / galaxyRadius) * 1.5;
+                // This is now only a weak density hint, not a visible dark ribbon.
+                const dustLane = Math.pow(Math.max(0, Math.cos(phase + 0.9)), 3.0);
+                rDensity += dustLane * Math.exp(-r_cyl / galaxyRadius) * 0.45;
             }
         } else {
-            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.6));
+            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.72)) * 0.28;
         }
+        return Math.max(0, zDensity * rDensity * (totalGasMassCached / 60000.0) * dustVisualMult);
+    }
 
-        return Math.max(0, zDensity * rDensity * (totalGasMassCached / 50000.0) * dustVisualMult);
+    function getApproxDustDensity(x, y, z) {
+        // Compatibility wrapper for panels/spectroscopy/HII. Main star/gas attenuation uses getDustAttenuationForObject().
+        return getDustAttenuationForObject(x, y, z, currentModeId || 'visible').tau;
     }
 
     function getPlanckColor(temp) {
@@ -2465,25 +2614,22 @@
         } else { const pc = getPlanckColor(star.temperature); r=pc[0]; g=pc[1]; b=pc[2]; }
 
         const useRealism = document.getElementById('tglRealism').checked;
-        const dust = getApproxDustDensity(star.x, star.y, star.z);
-
-        const viewAngleFactor = 0.3 + 2.7 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
+        const dustAtt = getDustAttenuationForObject(star.x, star.y, star.z, modeId);
 
         if (modeId === 'visible') {
             if (useRealism && tglDust.checked) { 
-                let effectiveDust = dust * viewAngleFactor;
-                a = baseA * Math.exp(-effectiveDust * 0.72); 
-                r *= Math.exp(-effectiveDust * 0.35); 
-                g *= Math.exp(-effectiveDust * 0.95); 
-                b *= Math.exp(-effectiveDust * 1.65); 
+                a = baseA * dustAtt.alpha; 
+                r *= dustAtt.r; 
+                g *= dustAtt.g; 
+                b *= dustAtt.b; 
             } else { a = baseA; }
             if (star.initialMass > MASSIVE_STAR_THRESHOLD && star.stage === 'MS') { pType = 6.0; sSize *= 2.0; }
         } else if (modeId === 'infrared') {
-            a = baseA * Math.exp(-dust * 0.3); 
+            a = baseA * dustAtt.alpha; 
             if (star.temperature > 8000) a *= 0.1; 
             else { r = 1.0; g = 0.6; b = 0.2; if (star.temperature < 4000) { r=1.0; g=0.2; b=0.0; a*=1.5; sSize*=1.2; } }
         } else if (modeId === 'ultraviolet') {
-            a = baseA * Math.exp(-dust * 3.0); 
+            a = baseA * dustAtt.alpha; 
             if (star.temperature > 8000) { r = 0.5; g = 0.2; b = 1.0; a *= 1.5; sSize *= 1.5; } else { a *= 0.05; }
         } else if (modeId === 'xray') {
             a = 0.0; 
@@ -2533,8 +2679,7 @@
         let r=0.0, g=0.0, b=0.0, a=baseAlpha;
 
         const useRealism = document.getElementById('tglRealism').checked;
-        const dust = getApproxDustDensity(cloud.x, cloud.y, cloud.z);
-        const viewAngleFactor = 0.3 + 2.7 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
+        const dustAtt = getDustAttenuationForObject(cloud.x, cloud.y, cloud.z, modeId);
 
        if (modeId === 'visible') { 
             if (cloud.heat > 1000) { 
@@ -2554,22 +2699,21 @@
                 cSize *= clamp(armMod.size, 0.85, 1.10);
             }
             if (useRealism && tglDust.checked) {
-                let effectiveDust = dust * viewAngleFactor;
-                a *= Math.exp(-effectiveDust * 1.0);
-                r *= Math.exp(-effectiveDust * 0.6);
-                g *= Math.exp(-effectiveDust * 1.8);
-                b *= Math.exp(-effectiveDust * 3.0);
+                a *= dustAtt.alpha;
+                r *= dustAtt.r;
+                g *= dustAtt.g;
+                b *= dustAtt.b;
             }
         } 
         else if (modeId === 'infrared') { 
             if (cloud.heat < 30) { r=1.0; g=0.4; b=0.0; a = (0.05 + cloud.metallicity*0.1) * shimmer * visualMult; } 
             else { a*=0.2; } 
-            if (useRealism && tglDust.checked) a *= Math.exp(-dust * 0.3);
+            if (useRealism && tglDust.checked) a *= dustAtt.alpha;
         } 
         else if (modeId === 'ultraviolet') { 
             if (cloud.heat > 40) { r=0.5; g=0.0; b=1.0; a*=1.5; } 
             else { a=0.0; } 
-            if (useRealism && tglDust.checked) a *= Math.exp(-dust * 3.0);
+            if (useRealism && tglDust.checked) a *= dustAtt.alpha;
         } 
         else if (modeId === 'xray') { 
             if (cloud.heat > 1000) { r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0); } 
@@ -2701,7 +2845,7 @@
             const flatten = clamp(1.0 - 0.52 * tilt, 0.28, 1.0);
             const angle = rotationY * Math.PI / 180;
             let col = stage === 'new' ? [205, 215, 245] : stage === 'dying' ? [230, 145, 95] : [226, 178, 116];
-            let alpha = stage === 'new' ? 0.030 : stage === 'dying' ? 0.050 : 0.042;
+            let alpha = stage === 'new' ? 0.042 : stage === 'dying' ? 0.064 : 0.058;
             if (currentModeId === 'infrared') { col = [255, 145, 70]; alpha *= 1.45; }
             if (currentModeId === 'ultraviolet') { col = [95, 90, 210]; alpha *= stage === 'new' ? 0.65 : 0.22; }
             ctx.save();
@@ -2769,16 +2913,17 @@
             ctx.restore();
 
             if (realism && presetId !== 'ring' && currentModeId !== 'xray') {
-                const dustAlphaBase = currentModeId === 'infrared' ? 0.020 : currentModeId === 'ultraviolet' ? 0.32 : 0.16;
-                const dustAlpha = clamp(dustAlphaBase * (0.25 + tilt) * dustVisualMult, 0.0, 0.45);
-                if (dustAlpha > 0.012) {
+                const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+                const dustAlphaBase = currentModeId === 'infrared' ? 0.006 : currentModeId === 'ultraviolet' ? 0.13 : 0.040;
+                const dustAlpha = clamp(dustAlphaBase * (0.18 + edgeOn * 0.95) * dustVisualMult, 0.0, currentModeId === 'visible' ? 0.09 : 0.22);
+                if (dustAlpha > 0.010) {
                     ctx.save();
                     ctx.globalCompositeOperation = 'source-over';
                     ctx.translate(sx, sy);
                     ctx.rotate(angle + 0.08 * Math.sin(frameCount * 0.01 + g));
                     ctx.strokeStyle = `rgba(16,10,7,${dustAlpha})`;
                     ctx.lineCap = 'round';
-                    ctx.lineWidth = Math.max(2 * m, baseR * (0.10 + 0.08 * tilt));
+                    ctx.lineWidth = Math.max(1.2 * m, baseR * (0.035 + 0.055 * edgeOn));
                     ctx.beginPath();
                     ctx.moveTo(-baseR * 0.95, Math.sin(frameCount * 0.008 + g) * baseR * 0.04);
                     ctx.bezierCurveTo(-baseR * 0.30, -baseR * 0.16, baseR * 0.30, baseR * 0.16, baseR * 0.95, -baseR * 0.03);
@@ -2989,11 +3134,12 @@
 
     function drawVisibleSpiralDustLanes(ctx) {
         if (!showEvolvingDust || !document.getElementById('tglRealism').checked) return;
-        if (dustVisualMult < 0.006) return;
+        if (dustVisualMult < 0.025) return;
         if (currentModeId !== 'visible' && currentModeId !== 'ultraviolet') return;
         ctx.save();
         ctx.globalCompositeOperation = 'multiply';
         const m = highResMult;
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
         for (let g = 0; g < blackHoles.length; g++) {
             const bh = blackHoles[g];
             if (!bh) continue;
@@ -3001,28 +3147,29 @@
             const preset = GALAXY_PRESETS[presetId];
             if (!preset || preset.type !== 'spiral' || isPostMerger) continue;
             const armCount = Math.max(1, preset.armCount || 2);
-            const baseAlpha = currentModeId === 'ultraviolet' ? 0.22 : 0.105;
-            const tiltBoost = 0.65 + 0.85 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
+            const baseAlpha = currentModeId === 'ultraviolet' ? 0.095 : 0.030;
+            const orientation = 0.45 + edgeOn * 0.95;
             for (let arm = 0; arm < armCount; arm++) {
                 for (let lane = 0; lane < 2; lane++) {
-                    const offset = lane === 0 ? -0.34 : 0.18;
+                    const offset = lane === 0 ? -0.30 : 0.16;
                     ctx.beginPath();
                     let started = false;
-                    for (let r = bulgeRadius * 0.58; r <= galaxyRadius * 1.08; r += 18) {
+                    for (let r = bulgeRadius * 0.64; r <= galaxyRadius * 1.03; r += 20) {
                         const theta = (2 * Math.PI / armCount) * arm + Math.log(r / bulgeRadius) / Math.tan(SPIRAL_PITCH) + patternAngle + offset;
-                        const wobble = Math.sin(r * 0.037 + arm * 2.0 + lane * 1.7) * 7.0;
+                        const wobble = Math.sin(r * 0.041 + arm * 2.0 + lane * 1.7) * 4.2;
                         const wx = bh.x + (r + wobble) * Math.cos(theta);
                         const wy = bh.y + (r + wobble) * Math.sin(theta);
-                        const wz = bh.z + Math.sin(r * 0.021 + arm) * 2.5;
+                        const wz = bh.z + Math.sin(r * 0.021 + arm) * 2.0;
                         const p = getRawProjection(wx, wy, wz);
                         const sx = p.rawX * (scale * m) + (translateX * m) + centerX;
                         const sy = p.rawY * (scale * m) + (translateY * m) + centerY;
                         if (!started) { ctx.moveTo(sx, sy); started = true; }
                         else ctx.lineTo(sx, sy);
                     }
-                    const laneAlpha = clamp(baseAlpha * tiltBoost * dustVisualMult * (lane === 0 ? 1.0 : 0.55), 0.0, currentModeId === 'visible' ? 0.42 : 0.55);
-                    ctx.strokeStyle = lane === 0 ? `rgba(18,11,7,${laneAlpha})` : `rgba(70,42,24,${laneAlpha * 0.75})`;
-                    ctx.lineWidth = Math.max(0.8 * m, (lane === 0 ? 5.5 : 3.0) * scale * m);
+                    const laneAlpha = clamp(baseAlpha * orientation * dustVisualMult * (lane === 0 ? 1.0 : 0.42), 0.0, currentModeId === 'visible' ? 0.10 : 0.20);
+                    if (laneAlpha < 0.004) continue;
+                    ctx.strokeStyle = lane === 0 ? `rgba(30,19,12,${laneAlpha})` : `rgba(82,51,30,${laneAlpha * 0.65})`;
+                    ctx.lineWidth = Math.max(0.45 * m, (lane === 0 ? 2.15 : 1.15) * scale * m * (1.0 + edgeOn * 0.75));
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
                     ctx.stroke();
@@ -3187,23 +3334,43 @@
 
     function drawEvolvingDustClouds(ctx) {
         if (!showEvolvingDust || currentModeId === 'xray' || dustVisualMult < 0.006) return;
-        const maxDraw = currentModeId === 'visible' ? 2500 : 1800;
+        const maxDraw = currentModeId === 'visible' ? 1600 : 2200;
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
         let drawn = 0;
         ctx.save();
         for (const c of gasClouds) {
             if (drawn >= maxDraw) break;
             if (!c.dustMass || c.dustMass <= 0 || c.mass <= 0) continue;
             const ratio = c.dustMass / Math.max(c.mass, 0.001);
-            if (ratio < 0.0004) continue;
+            if (ratio < 0.00045) continue;
             const p = getRawProjection(c.x, c.y, c.z);
             const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
             const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-            const sr = Math.max(1, c.size * 2.5 * scale * highResMult);
+            const sr = Math.max(1, c.size * (currentModeId === 'visible' ? 1.45 : 2.45) * scale * highResMult);
             if (sr < 1.2 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
             let color, alpha;
-            if (currentModeId === 'visible') { color = [34, 23, 15]; alpha = clamp(ratio * 8.0 * dustVisualMult, 0.0, 0.075); ctx.globalCompositeOperation = 'multiply'; }
-            else if (currentModeId === 'infrared') { const w = clamp(((c.dustTemp || 20) - 20) / 260, 0, 1); color = [120 + w*135, 50 + w*80, 20]; alpha = clamp(ratio * 10 * (0.4 + w) * dustVisualMult, 0.01, 0.18); ctx.globalCompositeOperation = 'screen'; }
-            else if (currentModeId === 'ultraviolet') { color = [16, 8, 30]; alpha = clamp(ratio * 14 * dustVisualMult, 0.0, 0.20); ctx.globalCompositeOperation = 'multiply'; }
+            if (currentModeId === 'visible') {
+                // Visible dust is mostly subtractive attenuation in the particle pass. Only draw the densest foreground seams.
+                const localTau = estimateCloudOpticalDepth(c);
+                if (localTau < 0.045) continue;
+                color = [38, 25, 16];
+                alpha = clamp(localTau * 0.030 * (0.25 + edgeOn * 0.85), 0.0, 0.030);
+                if (alpha < 0.003) continue;
+                ctx.globalCompositeOperation = 'multiply';
+            }
+            else if (currentModeId === 'infrared') {
+                const w = clamp(((c.dustTemp || 20) - 20) / 260, 0, 1);
+                color = [120 + w*135, 52 + w*82, 22];
+                alpha = clamp(ratio * 12.0 * (0.35 + w) * dustVisualMult, 0.004, 0.22);
+                ctx.globalCompositeOperation = 'screen';
+            }
+            else if (currentModeId === 'ultraviolet') {
+                const localTau = estimateCloudOpticalDepth(c);
+                if (localTau < 0.035) continue;
+                color = [18, 9, 32];
+                alpha = clamp(localTau * 0.09 * (0.45 + edgeOn), 0.0, 0.12);
+                ctx.globalCompositeOperation = 'multiply';
+            }
             else continue;
             const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
             grad.addColorStop(0, `rgba(${Math.round(color[0])},${Math.round(color[1])},${Math.round(color[2])},${alpha})`);
@@ -3502,6 +3669,7 @@
       gl.uniform1f(uIsOrthoLoc, isOrthographicRender ? 1.0 : 0.0); 
       
       totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
+      buildProjectedDustField();
 
       let pIdx = 0;
       function addPoint(x,y,z,size,type,r,g,b,a) {
