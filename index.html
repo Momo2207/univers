@@ -1024,7 +1024,7 @@
     const dustBrightnessSlider = document.getElementById('dustBrightness');
     const dustBrightnessValue = document.getElementById('dustBrightnessValue');
     
-    let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
+    let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let coldGasContrastBoost = 1.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
 
     function mapDustBiasToMultiplier(val) {
         // Radiative-transfer style control: this scales optical depth, not black overlay opacity.
@@ -1183,7 +1183,7 @@
     }
     
     hotGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(hotGasBrightnessSlider.value); hotGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; hotGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
-    coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
+    coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0.15, 0.45 + Math.pow(1.9, val + 1.0)); coldGasContrastBoost = clamp(0.9 + Math.max(0, val) * 0.5, 0.9, 2.4); });
     dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); const shown = val.toFixed(2); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + shown; dustVisualMult = mapDustBiasToMultiplier(val); });
 
     const starScaleSlider = document.getElementById('starScale');
@@ -2727,62 +2727,108 @@
 
     function getGasRenderParams(cloud, modeId) {
         let shimmer = 0.95 + Math.sin(frameCount * 0.015 + cloud.id) * 0.05;
-        
-        let heatRatio = clamp((cloud.heat - 15) / 35, 0.0, 1.0); 
-        let visualMult = coldGasVisualMult * (1.0 - heatRatio) + hotGasVisualMult * heatRatio;
 
-        let baseAlpha = (cloud.heat > 50 ? 0.05 : 0.04) * shimmer * visualMult; 
-        let cSize = cloud.size * visualMult * 1.1; 
-        
+        const coldness = clamp(1.0 - (cloud.heat - 12.0) / 45.0, 0.0, 1.0);
+        const heatRatio = 1.0 - coldness;
+        const coldVisual = coldGasVisualMult * (0.45 + coldness * 0.95);
+        const hotVisual = hotGasVisualMult * (0.35 + heatRatio * 0.95);
+        let visualMult = coldVisual * coldness + hotVisual * heatRatio;
+
+        let baseAlpha = (coldness > 0.6 ? 0.055 : cloud.heat > 50 ? 0.05 : 0.042) * shimmer * visualMult;
+        let cSize = cloud.size * (coldness > 0.6 ? 1.25 : 1.1) * visualMult;
+
         let r=0.0, g=0.0, b=0.0, a=baseAlpha;
 
         const useRealism = document.getElementById('tglRealism').checked;
         const dustAtt = getDustAttenuationForObject(cloud.x, cloud.y, cloud.z, modeId);
+        const coldGain = clamp((coldGasVisualMult / 2.0), 0.2, 8.0);
+        const contrast = coldGasContrastBoost;
 
-       if (isOpticalLikeMode(modeId)) { 
-            if (cloud.heat > 1000) { 
-                r=0.72; g=0.28; b=0.95; a*=1.05; cSize *= 0.82; 
-            } 
-            else if (cloud.heat > 30) { 
-                r=0.35; g=0.42; b=0.78; a*=0.72; cSize *= 0.68; 
-            } 
-            else { 
-               r=0.65; g=0.22; b=0.08; a*=0.35; 
-                cSize *= 0.0065; 
+       if (isOpticalLikeMode(modeId)) {
+            if (coldness > 0.55) {
+                // Distinct cold-gas tracer: teal / aqua and visibly diffuse, clearly separated from hot gas and stars.
+                r = 0.06;
+                g = 0.72 + 0.08 * Math.min(1.0, contrast - 0.9);
+                b = 0.50 + 0.10 * Math.min(1.0, contrast - 0.9);
+                a = (0.05 + 0.06 * coldness + Math.max(0, coldGain - 1.0) * 0.028) * shimmer;
+                cSize *= 0.24 + 0.16 * Math.min(2.0, coldGain);
             }
-            
-            if (isOpticalLikeMode(modeId)) {
-                const armMod = getVisibleSpiralPopulationModifier(cloud.x, cloud.y, cloud.z, cloud.galaxyIndex);
-                a *= clamp(armMod.alpha * 0.92, 0.35, 1.15);
-                cSize *= clamp(armMod.size, 0.85, 1.10);
+            else if (cloud.heat > 1000) {
+                r=0.72; g=0.28; b=0.95; a*=1.05; cSize *= 0.82;
             }
+            else if (cloud.heat > 30) {
+                r=0.35; g=0.42; b=0.78; a*=0.72; cSize *= 0.68;
+            }
+            else {
+                r=0.22; g=0.62; b=0.46; a*=0.26; cSize *= 0.08;
+            }
+
+            const armMod = getVisibleSpiralPopulationModifier(cloud.x, cloud.y, cloud.z, cloud.galaxyIndex);
+            a *= clamp(armMod.alpha * 0.92, 0.35, 1.15);
+            cSize *= clamp(armMod.size, 0.85, 1.12);
             if (useRealism && tglDust.checked) {
                 a *= dustAtt.alpha;
                 r *= dustAtt.r;
                 g *= dustAtt.g;
                 b *= dustAtt.b;
             }
-        } 
-        else if (modeId === 'infrared') { 
-            if (cloud.heat < 30) { r=1.0; g=0.4; b=0.0; a = (0.05 + cloud.metallicity*0.1) * shimmer * visualMult; } 
-            else { a*=0.2; } 
+        }
+        else if (modeId === 'infrared') {
+            if (coldness > 0.55) {
+                // Cold dust / molecular gas tracer in IR: amber-orange, clearly warmer than stars and less purple than hot gas.
+                r = 1.0;
+                g = 0.42;
+                b = 0.08;
+                a = (0.075 + 0.065 * coldness + Math.max(0, coldGain - 1.0) * 0.04) * shimmer;
+                cSize *= 0.32 + 0.18 * Math.min(2.5, coldGain);
+            }
+            else if (cloud.heat > 30) {
+                r = 0.45; g = 0.12; b = 0.85; a *= 0.22; cSize *= 0.55;
+            }
+            else {
+                r = 0.85; g = 0.30; b = 0.05; a *= 0.18; cSize *= 0.28;
+            }
             if (useRealism && tglDust.checked) a *= dustAtt.alpha;
-        } 
-        else if (modeId === 'ultraviolet') { 
-            if (cloud.heat > 40) { r=0.5; g=0.0; b=1.0; a*=1.5; } 
-            else { a=0.0; } 
+        }
+        else if (modeId === 'ultraviolet') {
+            if (coldness > 0.55) {
+                // Diagnostic cold-gas tracer in UV: green-cyan so it stands apart from violet hot/young UV structures.
+                r = 0.18; g = 0.95; b = 0.52;
+                a = (0.045 + 0.045 * coldness + Math.max(0, coldGain - 1.0) * 0.026) * shimmer;
+                cSize *= 0.22 + 0.14 * Math.min(2.0, coldGain);
+            }
+            else if (cloud.heat > 40) {
+                r=0.5; g=0.0; b=1.0; a*=1.5;
+            }
+            else {
+                a=0.0;
+            }
             if (useRealism && tglDust.checked) a *= dustAtt.alpha;
-        } 
-        else if (modeId === 'xray') { 
-            if (cloud.heat > 1000) { r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0); } 
-            else { a=0.0; } 
+        }
+        else if (modeId === 'xray') {
+            if (coldness > 0.55) {
+                // Faint diagnostic tracer only: real cold gas would be absent in X-ray, but this keeps it visible for interpretation.
+                r = 1.0; g = 0.08; b = 0.26;
+                a = (0.012 + Math.max(0, coldGain - 1.0) * 0.01) * shimmer;
+                cSize *= 0.16 + 0.10 * Math.min(1.5, coldGain);
+            }
+            else if (cloud.heat > 1000) {
+                r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0);
+            }
+            else {
+                a=0.0;
+            }
         }
         else if (modeId === 'spectroscopy') {
             let z = Math.min(2.0, cloud.metallicity);
-            if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } 
-            else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } 
+            if (coldness > 0.55) {
+                r = 0.15; g = 0.95; b = 0.60;
+                a = 0.45 + Math.max(0, coldGain - 1.0) * 0.08;
+                cSize *= 0.30 + 0.18 * Math.min(2.0, coldGain);
+            } else if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; }
+            else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; }
             else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; }
-            a *= 0.8; 
+            a *= 0.8;
         }
         if (useRealism && useCinematicDepth && modeId !== 'xray') {
             const depthMod = getDepthVisualModifier(cloud.x, cloud.y, cloud.z);
@@ -2791,9 +2837,13 @@
         }
 
         if (isTelescopeMode(modeId)) {
-            const rgb = telescopeDesaturateRGB(r, g, b, 0.55);
+            const rgb = telescopeDesaturateRGB(r, g, b, coldness > 0.55 ? 0.35 : 0.55);
             r = rgb[0]; g = rgb[1]; b = rgb[2];
-            if (cloud.heat < 40) { a *= 0.05; cSize *= 0.42; }
+            if (coldness > 0.55) {
+                a *= 0.58 + Math.max(0, coldGain - 1.0) * 0.08;
+                cSize *= 0.92;
+            }
+            else if (cloud.heat < 40) { a *= 0.08; cSize *= 0.45; }
             else if (cloud.heat < 900) { a *= 0.16; cSize *= 0.52; }
             else { a *= 0.24; cSize *= 0.60; }
         }
