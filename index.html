@@ -2395,6 +2395,56 @@
         return [Math.max(0, rNorm), Math.max(0, gNorm), Math.max(0, bNorm)];
     }
 
+
+    function getNearestGalaxyContextForPoint(x, y, z, preferredIndex = null) {
+        let bestIndex = 0, bestDist = Infinity, bestBH = null;
+        if (preferredIndex !== null && blackHoles[preferredIndex]) {
+            const bh = blackHoles[preferredIndex];
+            const dx = x - bh.x, dy = y - bh.y, dz = z - bh.z;
+            return { index: preferredIndex, bh, dx, dy, dz, rCyl: Math.hypot(dx, dy), r3: Math.hypot(dx, dy, dz) };
+        }
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const dx = x - bh.x, dy = y - bh.y, dz = z - bh.z;
+            const d = dx*dx + dy*dy + dz*dz;
+            if (d < bestDist) { bestDist = d; bestIndex = g; bestBH = bh; }
+        }
+        if (!bestBH) return { index: 0, bh: null, dx: x, dy: y, dz: z, rCyl: Math.hypot(x, y), r3: Math.hypot(x, y, z) };
+        const dx = x - bestBH.x, dy = y - bestBH.y, dz = z - bestBH.z;
+        return { index: bestIndex, bh: bestBH, dx, dy, dz, rCyl: Math.hypot(dx, dy), r3: Math.hypot(dx, dy, dz) };
+    }
+
+    function getVisibleSpiralPopulationModifier(x, y, z, preferredIndex = null) {
+        const ctx = getNearestGalaxyContextForPoint(x, y, z, preferredIndex);
+        const presetId = ctx.index === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const preset = GALAXY_PRESETS[presetId];
+        let alpha = 1.0, size = 1.0, warmMix = 0.0;
+
+        const r = ctx.rCyl;
+        const diskFalloff = clamp(0.30 + 0.82 * Math.exp(-r / (galaxyRadius * 0.72)), 0.34, 1.06);
+        alpha *= diskFalloff;
+
+        // Smooth the unresolved old-star bulge: fewer glittering white points, warmer integrated light.
+        if (r < bulgeRadius * 1.15) {
+            const t = clamp(r / (bulgeRadius * 1.15), 0, 1);
+            alpha *= 0.38 + 0.52 * t;
+            size *= 0.62 + 0.26 * t;
+            warmMix = 0.52 * (1.0 - t);
+        }
+
+        if (preset && preset.type === 'spiral' && !isPostMerger && r > bulgeRadius * 0.55 && r < galaxyRadius * 1.18) {
+            const theta = Math.atan2(ctx.dy, ctx.dx);
+            const phase = preset.armCount * (theta - patternAngle) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(Math.max(r, 51) / 50.0);
+            const c = Math.cos(phase);
+            const ridge = clamp((c - 0.42) / 0.58, 0, 1);
+            const interArm = clamp((0.35 - c) / 1.35, 0, 1);
+            alpha *= (1.0 + ridge * 0.20) * (1.0 - interArm * 0.33);
+            size *= 1.0 + ridge * 0.05;
+        }
+        return { alpha, size, warmMix };
+    }
+
     function getStarRenderParams(star, modeId) {
         let r, g, b, a;
         let baseA = Math.min(1.0, 0.4 + (Math.min(1, Math.pow(star.mass/starMass, 0.05) * (star.temperature/6000))) * 0.6);
@@ -2437,6 +2487,18 @@
             a = baseA * 0.5;
         }
 
+        if (modeId === 'visible') {
+            const popMod = getVisibleSpiralPopulationModifier(star.x, star.y, star.z, star.galaxyIndex);
+            a *= popMod.alpha;
+            sSize *= popMod.size;
+            if (popMod.warmMix > 0) {
+                const wr = 1.0, wg = 0.78, wb = 0.48;
+                r = r * (1.0 - popMod.warmMix) + wr * popMod.warmMix;
+                g = g * (1.0 - popMod.warmMix) + wg * popMod.warmMix;
+                b = b * (1.0 - popMod.warmMix) + wb * popMod.warmMix;
+            }
+        }
+
         if (useRealism && useCinematicDepth && modeId !== 'xray') {
             const depthMod = getDepthVisualModifier(star.x, star.y, star.z);
             a *= depthMod.alpha;
@@ -2469,16 +2531,21 @@
 
        if (modeId === 'visible') { 
             if (cloud.heat > 1000) { 
-                r=0.9; g=0.2; b=1.0; a*=1.5; 
+                r=0.72; g=0.28; b=0.95; a*=1.05; cSize *= 0.82; 
             } 
             else if (cloud.heat > 30) { 
-                r=0.4; g=0.5; b=1.0; a*=1.8; 
+                r=0.35; g=0.42; b=0.78; a*=0.72; cSize *= 0.68; 
             } 
             else { 
-               r=0.85; g=0.3; b=0.0; a*=1.5; 
-                cSize *= 0.01; 
+               r=0.65; g=0.22; b=0.08; a*=0.35; 
+                cSize *= 0.0065; 
             }
             
+            if (modeId === 'visible') {
+                const armMod = getVisibleSpiralPopulationModifier(cloud.x, cloud.y, cloud.z, cloud.galaxyIndex);
+                a *= clamp(armMod.alpha * 0.92, 0.35, 1.15);
+                cSize *= clamp(armMod.size, 0.85, 1.10);
+            }
             if (useRealism && tglDust.checked) {
                 let effectiveDust = dust * viewAngleFactor;
                 a *= Math.exp(-effectiveDust * 1.0);
@@ -2521,10 +2588,11 @@
     function initBackgroundUniverse() {
         bgStars = [];
         bgGalaxies = [];
-        for (let i = 0; i < 900; i++) {
-            bgStars.push({ x: Math.random(), y: Math.random(), mag: Math.pow(Math.random(), 3.2), temp: 2800 + Math.random() * 11000, twinkle: Math.random() * Math.PI * 2 });
+        for (let i = 0; i < 430; i++) {
+            // Quieter deep-field stars: visible enough for scale, not bright enough to compete with the main galaxy.
+            bgStars.push({ x: Math.random(), y: Math.random(), mag: Math.pow(Math.random(), 3.6), temp: 2800 + Math.random() * 11000, twinkle: Math.random() * Math.PI * 2 });
         }
-        for (let i = 0; i < 85; i++) {
+        for (let i = 0; i < 62; i++) {
             bgGalaxies.push({
                 x: Math.random(), y: Math.random(), size: 2.0 + Math.pow(Math.random(), 2.0) * 12.0,
                 type: Math.random() < 0.55 ? 'elliptical' : (Math.random() < 0.55 ? 'edge' : 'spiral'),
@@ -2564,7 +2632,7 @@
         const modeMult = currentModeId === 'xray' ? 0.18 : currentModeId === 'ultraviolet' ? 0.55 : currentModeId === 'infrared' ? 1.25 : 1.0;
 
         for (const g of bgGalaxies) {
-            let alpha = (0.025 + g.brightness * 0.11) * modeMult * exposureBoost;
+            let alpha = (0.014 + g.brightness * 0.060) * modeMult * exposureBoost;
             if (currentModeId === 'xray') alpha *= g.redshift > 0.85 ? 1.5 : 0.35;
             if (alpha <= 0.003) continue;
             const size = g.size * m * (0.7 + g.redshift * 1.4);
@@ -2587,12 +2655,12 @@
         }
 
         for (const s of bgStars) {
-            let a = (0.015 + s.mag * 0.45) * modeMult * exposureBoost;
+            let a = (0.006 + s.mag * 0.22) * modeMult * exposureBoost;
             if (currentModeId === 'xray') a *= s.mag > 0.85 ? 0.8 : 0.12;
             if (a <= 0.004) continue;
             if (realism && currentModeId !== 'xray') a *= 0.92 + Math.sin(frameCount * 0.025 + s.twinkle) * 0.08;
             const pc = getPlanckColor(s.temp);
-            const radius = (0.35 + s.mag * 1.2) * m;
+            const radius = (0.24 + s.mag * 0.82) * m;
             drawWrappedPoint(ctx, s.x * w + px, s.y * h + py, (sx, sy) => {
                 ctx.fillStyle = `rgba(${Math.round(pc[0]*255)},${Math.round(pc[1]*255)},${Math.round(pc[2]*255)},${clamp(a,0,0.75)})`;
                 ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
@@ -2624,8 +2692,8 @@
             const tilt = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
             const flatten = clamp(1.0 - 0.58 * tilt, 0.22, 1.0);
             const angle = rotationY * Math.PI / 180;
-            let core = stage === 'new' ? [210, 220, 255] : stage === 'dying' ? [255, 155, 92] : [255, 205, 128];
-            let alpha = stage === 'new' ? 0.10 : stage === 'dying' ? 0.13 : 0.12;
+            let core = stage === 'new' ? [218, 218, 245] : stage === 'dying' ? [224, 125, 78] : [226, 168, 98];
+            let alpha = stage === 'new' ? 0.070 : stage === 'dying' ? 0.095 : 0.085;
             if (currentModeId === 'infrared') { core = [255, 135, 60]; alpha *= 1.65; }
             if (currentModeId === 'ultraviolet') { core = [110, 95, 255]; alpha *= stage === 'new' ? 1.05 : 0.35; }
             if (currentModeId === 'xray') { alpha = 0.015 + bh.accretionGlow * 0.05; core = [120, 230, 255]; }
@@ -2635,8 +2703,9 @@
             ctx.globalCompositeOperation = 'screen';
             ctx.translate(sx, sy); ctx.rotate(angle); ctx.scale(1.0, flatten);
             const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, baseR);
-            grad.addColorStop(0.0, `rgba(255,245,220,${alpha * 2.4})`);
-            grad.addColorStop(0.28, `rgba(${core[0]},${core[1]},${core[2]},${alpha})`);
+            grad.addColorStop(0.0, `rgba(255,235,188,${alpha * 1.18})`);
+            grad.addColorStop(0.22, `rgba(232,178,108,${alpha * 0.92})`);
+            grad.addColorStop(0.58, `rgba(${core[0]},${core[1]},${core[2]},${alpha * 0.54})`);
             grad.addColorStop(1.0, `rgba(${core[0]},${core[1]},${core[2]},0)`);
             ctx.fillStyle = grad;
             ctx.beginPath(); ctx.arc(0, 0, baseR, 0, Math.PI * 2); ctx.fill();
@@ -2646,14 +2715,14 @@
             ctx.globalCompositeOperation = 'screen';
             const nuclearR = Math.max(4 * m, baseR * 0.10);
             const nGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, nuclearR);
-            nGrad.addColorStop(0, currentModeId === 'xray' ? `rgba(220,250,255,${0.45 + bh.accretionGlow})` : `rgba(255,245,210,${0.35 + bh.accretionGlow * 0.4})`);
+            nGrad.addColorStop(0, currentModeId === 'xray' ? `rgba(220,250,255,${0.38 + bh.accretionGlow * 0.75})` : `rgba(255,232,178,${0.17 + bh.accretionGlow * 0.28})`);
             nGrad.addColorStop(1, 'rgba(255,210,120,0)');
             ctx.fillStyle = nGrad;
             ctx.beginPath(); ctx.arc(sx, sy, nuclearR, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
 
             if (realism && presetId !== 'ring' && currentModeId !== 'xray') {
-                const dustAlphaBase = currentModeId === 'infrared' ? 0.055 : currentModeId === 'ultraviolet' ? 0.34 : 0.20;
+                const dustAlphaBase = currentModeId === 'infrared' ? 0.030 : currentModeId === 'ultraviolet' ? 0.48 : 0.34;
                 const dustAlpha = clamp(dustAlphaBase * (0.25 + tilt) * dustVisualMult, 0.0, 0.45);
                 if (dustAlpha > 0.02) {
                     ctx.save();
@@ -2870,6 +2939,52 @@
         }
     }
 
+
+    function drawVisibleSpiralDustLanes(ctx) {
+        if (!showEvolvingDust || !document.getElementById('tglRealism').checked) return;
+        if (currentModeId !== 'visible' && currentModeId !== 'ultraviolet') return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        const m = highResMult;
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const preset = GALAXY_PRESETS[presetId];
+            if (!preset || preset.type !== 'spiral' || isPostMerger) continue;
+            const armCount = Math.max(1, preset.armCount || 2);
+            const baseAlpha = currentModeId === 'ultraviolet' ? 0.34 : 0.25;
+            const tiltBoost = 0.65 + 0.85 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
+            for (let arm = 0; arm < armCount; arm++) {
+                for (let lane = 0; lane < 2; lane++) {
+                    const offset = lane === 0 ? -0.34 : 0.18;
+                    ctx.beginPath();
+                    let started = false;
+                    for (let r = bulgeRadius * 0.58; r <= galaxyRadius * 1.08; r += 18) {
+                        const theta = (2 * Math.PI / armCount) * arm + Math.log(r / bulgeRadius) / Math.tan(SPIRAL_PITCH) + patternAngle + offset;
+                        const wobble = Math.sin(r * 0.037 + arm * 2.0 + lane * 1.7) * 7.0;
+                        const wx = bh.x + (r + wobble) * Math.cos(theta);
+                        const wy = bh.y + (r + wobble) * Math.sin(theta);
+                        const wz = bh.z + Math.sin(r * 0.021 + arm) * 2.5;
+                        const p = getRawProjection(wx, wy, wz);
+                        const sx = p.rawX * (scale * m) + (translateX * m) + centerX;
+                        const sy = p.rawY * (scale * m) + (translateY * m) + centerY;
+                        if (!started) { ctx.moveTo(sx, sy); started = true; }
+                        else ctx.lineTo(sx, sy);
+                    }
+                    const laneAlpha = clamp(baseAlpha * tiltBoost * dustVisualMult * (lane === 0 ? 1.0 : 0.55), 0.0, currentModeId === 'visible' ? 0.42 : 0.55);
+                    ctx.strokeStyle = lane === 0 ? `rgba(18,11,7,${laneAlpha})` : `rgba(70,42,24,${laneAlpha * 0.75})`;
+                    ctx.lineWidth = Math.max(1.2 * m, (lane === 0 ? 9 : 5) * scale * m);
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                }
+            }
+        }
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
     function drawHIIRegions(ctx) {
         if (!showHIIRegions) return;
         ctx.save();
@@ -2879,20 +2994,20 @@
             const p = getRawProjection(r.x, r.y, r.z);
             const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
             const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-            const sr = r.radius * scale * highResMult;
+            const sr = r.radius * scale * highResMult * (currentModeId === 'visible' ? 0.82 : 1.0);
             if (sr < 1 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
-            let color = [255, 90, 135];
-            let alphaMult = 1.0;
+            let color = [255, 68, 108];
+            let alphaMult = currentModeId === 'visible' ? 0.78 : 1.0;
             if (currentModeId === 'infrared') { color = [255, 130, 40]; alphaMult = 0.8; }
             else if (currentModeId === 'ultraviolet') { color = [120, 80, 255]; alphaMult = 2.0; }
             else if (currentModeId === 'xray') { color = [80, 200, 255]; alphaMult = 0.1; }
-            let alpha = 0.15 * r.currentIntensity * alphaMult;
+            let alpha = 0.115 * r.currentIntensity * alphaMult;
             const dust = getApproxDustDensity(r.x, r.y, r.z);
             if (currentModeId === 'visible') alpha *= Math.exp(-dust * 0.8);
             if (currentModeId === 'ultraviolet') alpha *= Math.exp(-dust * 2.0);
             const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
             grad.addColorStop(0.0, `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
-            grad.addColorStop(0.45, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.34})`);
+            grad.addColorStop(0.38, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.30})`);
             grad.addColorStop(1.0, `rgba(${color[0]},${color[1]},${color[2]},0)`);
             ctx.fillStyle = grad;
             ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
@@ -3038,9 +3153,9 @@
             const sr = Math.max(1, c.size * 2.5 * scale * highResMult);
             if (sr < 1.2 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
             let color, alpha;
-            if (currentModeId === 'visible') { color = [42, 28, 18]; alpha = clamp(ratio * 12 * dustVisualMult, 0.008, 0.12); ctx.globalCompositeOperation = 'multiply'; }
+            if (currentModeId === 'visible') { color = [30, 20, 13]; alpha = clamp(ratio * 18 * dustVisualMult, 0.012, 0.19); ctx.globalCompositeOperation = 'multiply'; }
             else if (currentModeId === 'infrared') { const w = clamp(((c.dustTemp || 20) - 20) / 260, 0, 1); color = [120 + w*135, 50 + w*80, 20]; alpha = clamp(ratio * 10 * (0.4 + w) * dustVisualMult, 0.01, 0.18); ctx.globalCompositeOperation = 'screen'; }
-            else if (currentModeId === 'ultraviolet') { color = [22, 12, 38]; alpha = clamp(ratio * 18 * dustVisualMult, 0.015, 0.2); ctx.globalCompositeOperation = 'multiply'; }
+            else if (currentModeId === 'ultraviolet') { color = [16, 8, 30]; alpha = clamp(ratio * 24 * dustVisualMult, 0.020, 0.28); ctx.globalCompositeOperation = 'multiply'; }
             else continue;
             const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
             grad.addColorStop(0, `rgba(${Math.round(color[0])},${Math.round(color[1])},${Math.round(color[2])},${alpha})`);
@@ -3059,7 +3174,7 @@
             const sx = s.x * w, sy = s.y * h;
             const twinkle = 0.9 + 0.1 * Math.sin(frameCount * 0.02 + s.twinkleSeed);
             const pc = getPlanckColor(s.temp);
-            let alpha = (0.10 + s.brightness * 0.55) * twinkle;
+            let alpha = (0.045 + s.brightness * 0.32) * twinkle;
             if (currentModeId === 'xray') alpha *= 0.05;
             if (currentModeId === 'ultraviolet' && s.temp < 7000) alpha *= 0.22;
             if (currentModeId === 'infrared' && s.temp < 5000) alpha *= 1.35;
@@ -3398,6 +3513,7 @@
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
       if(showEnhancedCore) drawEnhancedGalaxyCores(overlayCtx);
       drawEvolvingDustClouds(overlayCtx);
+      drawVisibleSpiralDustLanes(overlayCtx);
       drawJetLobes(overlayCtx);
       drawHIIRegions(overlayCtx);
       drawJetCones(overlayCtx);
