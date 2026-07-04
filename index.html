@@ -873,6 +873,83 @@
     function isTelescopeMode(modeId = currentModeId) { return modeId === 'telescope'; }
     function isOpticalLikeMode(modeId = currentModeId) { return modeId === 'visible' || modeId === 'telescope'; }
     function shouldRenderColdGasDiagnostic(modeId = currentModeId) { return showColdGasOverlay || modeId === 'infrared' || modeId === 'spectroscopy'; }
+
+    function drawDirectorTrackingReticle(ctx, star, label = 'TRACK A') {
+        if (!star || !stars.includes(star)) return;
+        const p = getRawProjection(star.x, star.y, star.z);
+        let sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+        let sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+        const w = overlayCanvas.width, h = overlayCanvas.height;
+        const pad = 34 * highResMult;
+        const onscreen = sx >= 0 && sx <= w && sy >= 0 && sy <= h;
+        const pulse = 0.78 + 0.22 * Math.sin(frameCount * 0.08);
+
+        ctx.save();
+        ctx.lineWidth = 1.8 * highResMult;
+        ctx.strokeStyle = `rgba(120, 220, 255, ${0.88 * pulse})`;
+        ctx.fillStyle = `rgba(120, 220, 255, ${0.95 * pulse})`;
+        ctx.font = `${11 * highResMult}px Arial`;
+        ctx.setLineDash([]);
+
+        if (onscreen) {
+            const r = 14 * highResMult;
+            const gap = 6 * highResMult;
+            const arm = 9 * highResMult;
+            ctx.beginPath();
+            ctx.arc(sx, sy, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(sx - r - arm, sy); ctx.lineTo(sx - r + gap, sy);
+            ctx.moveTo(sx + r - gap, sy); ctx.lineTo(sx + r + arm, sy);
+            ctx.moveTo(sx, sy - r - arm); ctx.lineTo(sx, sy - r + gap);
+            ctx.moveTo(sx, sy + r - gap); ctx.lineTo(sx, sy + r + arm);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(sx, sy, 2.2 * highResMult, 0, Math.PI * 2);
+            ctx.fill();
+
+            const boxW = Math.max(64, ctx.measureText(label).width + 14 * highResMult);
+            const boxH = 16 * highResMult;
+            const lx = sx + 18 * highResMult;
+            const ly = sy - 24 * highResMult;
+            ctx.fillStyle = 'rgba(0, 8, 16, 0.68)';
+            ctx.fillRect(lx, ly, boxW, boxH);
+            ctx.strokeStyle = `rgba(120, 220, 255, ${0.78 * pulse})`;
+            ctx.strokeRect(lx, ly, boxW, boxH);
+            ctx.fillStyle = `rgba(210, 245, 255, ${0.96 * pulse})`;
+            ctx.fillText(label, lx + 7 * highResMult, ly + 11.5 * highResMult);
+        } else {
+            const cx = Math.min(Math.max(sx, pad), w - pad);
+            const cy = Math.min(Math.max(sy, pad), h - pad);
+            const dx = sx - cx, dy = sy - cy;
+            const ang = Math.atan2(dy, dx);
+            const len = 12 * highResMult;
+            ctx.translate(cx, cy);
+            ctx.rotate(ang);
+            ctx.beginPath();
+            ctx.moveTo(len, 0);
+            ctx.lineTo(-len * 0.55, len * 0.72);
+            ctx.lineTo(-len * 0.55, -len * 0.72);
+            ctx.closePath();
+            ctx.fill();
+            ctx.rotate(-ang);
+            ctx.translate(-cx, -cy);
+
+            const lx = cx + 14 * highResMult;
+            const ly = cy - 8 * highResMult;
+            const boxW = Math.max(72, ctx.measureText(label).width + 14 * highResMult);
+            const boxH = 16 * highResMult;
+            ctx.fillStyle = 'rgba(0, 8, 16, 0.68)';
+            ctx.fillRect(lx, ly, boxW, boxH);
+            ctx.strokeRect(lx, ly, boxW, boxH);
+            ctx.fillStyle = `rgba(210, 245, 255, ${0.96 * pulse})`;
+            ctx.fillText(label, lx + 7 * highResMult, ly + 11.5 * highResMult);
+        }
+
+        ctx.restore();
+    }
     function telescopeDesaturateRGB(r, g, b, amount = 0.45) {
         const l = r * 0.30 + g * 0.59 + b * 0.11;
         return [r * (1 - amount) + l * amount, g * (1 - amount) + l * amount, b * (1 - amount) + l * amount];
@@ -4157,6 +4234,12 @@
           mergerFlashGlow = Math.max(0, mergerFlashGlow - 0.02 * physicsSteps);
       }
       drawForegroundStars(overlayCtx);
+
+      if (isDirectorMode && trackingTarget && currentModeId !== 'spectroscopy') {
+          drawDirectorTrackingReticle(overlayCtx, trackingTarget, 'TRACK A');
+      } else if (!isPaused && astrometryTargets.length > 0 && currentModeId !== 'spectroscopy') {
+          drawDirectorTrackingReticle(overlayCtx, astrometryTargets[0], 'TARGET A');
+      }
 
       hoveredStar = null;
       if (isPaused && currentMouseX > -1 && !isDragging && !isRotating && highResMult === 1) {
