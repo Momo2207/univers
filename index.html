@@ -308,6 +308,7 @@
             <option value="infrared">Infrared (Dust Pen.)</option>
             <option value="ultraviolet">Ultraviolet (Young Stars)</option>
             <option value="xray">X-Ray (High Energy)</option>
+            <option value="radio">Radio / Cold Gas (H I)</option>
             <option value="spectroscopy">Spectroscopy Tool</option>
         </select>
         <div class="help-text" id="instrumentDesc">Optical imaging with dust extinction and diffraction.</div>
@@ -421,6 +422,8 @@
         <label class="checkbox-label"><input type="checkbox" id="useObservationSynthesis" checked> Synthesized Galaxy Light</label>
         <div class="help-text">Builds diffuse old-star, bulge, young-arm, H II, hot-gas and dust-emission maps before telescope rendering.</div>
         <label class="checkbox-label"><input type="checkbox" id="reduceResolvedOldStars" checked> Reduce Old-Star Sparkle</label>
+        <label class="checkbox-label"><input type="checkbox" id="enableOldStarConsolidation" checked> Gradual Old-Star Consolidation</label>
+        <div class="help-text">After the first ~500 Myr, old dim non-target stars are slowly folded into smooth disk light instead of remaining as individual glitter particles.</div>
         <label class="checkbox-label"><input type="checkbox" id="showPopulationMaps" checked> Population Light Maps</label>
         <label class="checkbox-label"><input type="checkbox" id="showGasPhaseMaps" checked> Gas Phase Emission Maps</label>
       </div>
@@ -440,6 +443,7 @@
             <option value="infrared">Infrared</option>
             <option value="ultraviolet">Ultraviolet</option>
             <option value="xray">X-Ray</option>
+            <option value="radio">Radio / Cold Gas</option>
         </select>
 
         <label for="screenshotScale">Capture Resolution:</label>
@@ -479,7 +483,7 @@
     <div id="hud">
       <div class="hud-card"><div class="hud-label">Time Elapsed</div><div class="hud-value" id="hud-time">0 yr</div></div>
       <div class="hud-card"><div class="hud-label">Sim Status</div><div class="hud-value val-cool" id="hud-phase">Running</div></div>
-      <div class="hud-card"><div class="hud-label">System SFR</div><div class="hud-value" id="hud-sfr">0 M☉/Myr</div></div>
+      <div class="hud-card"><div class="hud-label">SFR Index</div><div class="hud-value" id="hud-sfr">0 sim</div></div>
       <div class="hud-card"><div class="hud-label">BH Mass (Alpha)</div><div class="hud-value val-active" id="hud-bh-a">0 M☉</div></div>
       <div class="hud-card" id="hud-card-b"><div class="hud-label">BH Mass (Beta)</div><div class="hud-value val-alert" id="hud-bh-b">0 M☉</div></div>
       <div class="hud-card"><div class="hud-label">Cold Gas Res.</div><div class="hud-value val-cool" id="hud-gas">0%</div></div>
@@ -667,6 +671,21 @@
                 if (bin < model.bins) binMasses[bin] += stars[i].mass;
                 currentTotalMass += stars[i].mass;
             }
+            const consolidated = consolidatedStellarPopulations[g];
+            if (consolidated && consolidated.mass > 0) {
+                const rd = Math.max(80, galaxyRadius * 0.58);
+                const diskNorm = 1.0 - Math.exp(-model.maxRadius / rd) * (1.0 + model.maxRadius / rd);
+                let prevFrac = 0;
+                for (let i = 0; i < model.bins; i++) {
+                    const rOuter = (i + 1) * binSize;
+                    const fracOuter = (1.0 - Math.exp(-rOuter / rd) * (1.0 + rOuter / rd)) / Math.max(0.001, diskNorm);
+                    const annulusFrac = clamp(fracOuter - prevFrac, 0, 1);
+                    binMasses[i] += consolidated.mass * annulusFrac;
+                    prevFrac = fracOuter;
+                }
+                currentTotalMass += consolidated.mass;
+            }
+
             for (let i=0; i<gasClouds.length; i++) {
                 if (gasClouds[i].galaxyIndex !== g) continue;
                 let dx = gasClouds[i].x - bh.x; let dy = gasClouds[i].y - bh.y;
@@ -866,13 +885,15 @@
         infrared: { name: "Infrared", desc: "JWST-like view. Penetrates dust, highlights warm gas/dust emission, softens point sources.", psfCore: 35.0, psfHalo: 5.0, bloomStrength: 0.6, noiseStrength: 0.06, diffraction: 0.4, sparseMode: 0.0, bgFloor: [0.04, 0.01, 0.005], exposureGain: 1.3, exposureShoulder: 1.2 },
         ultraviolet: { name: "Ultraviolet", desc: "GALEX-like view. Traces recent star formation and hot/young populations. Highly attenuated by dust.", psfCore: 50.0, psfHalo: 10.0, bloomStrength: 0.2, noiseStrength: 0.12, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.005, 0.005, 0.015], exposureGain: 1.5, exposureShoulder: 2.0 },
         xray: { name: "X-Ray", desc: "Chandra-like view. Sparse event rendering. Reveals only highly energetic sources (AGN, jets, remnants).", psfCore: 80.0, psfHalo: 15.0, bloomStrength: 0.0, noiseStrength: 0.4, diffraction: 0.0, sparseMode: 1.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 2.0, exposureShoulder: 1.0 },
+        radio: { name: "Radio / Cold Gas", desc: "False-color H I style cold-gas map. Stars are suppressed while neutral/cold gas structure is highlighted in cyan-green.", psfCore: 95.0, psfHalo: 18.0, bloomStrength: 0.02, noiseStrength: 0.018, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.006, 0.006], exposureGain: 1.1, exposureShoulder: 1.8 },
         spectroscopy: { name: "Spectroscopy", desc: "Synthetic spectral analysis. Select an object to generate a readout.", psfCore: 60.0, psfHalo: 5.0, bloomStrength: 0.1, noiseStrength: 0.0, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 0.8, exposureShoulder: 1.0 }
     };
     
     let currentModeId = 'visible'; let currentMode = OBSERVATION_MODES[currentModeId];
     function isTelescopeMode(modeId = currentModeId) { return modeId === 'telescope'; }
+    function isRadioMode(modeId = currentModeId) { return modeId === 'radio'; }
     function isOpticalLikeMode(modeId = currentModeId) { return modeId === 'visible' || modeId === 'telescope'; }
-    function shouldRenderColdGasDiagnostic(modeId = currentModeId) { return showColdGasOverlay || modeId === 'infrared' || modeId === 'spectroscopy'; }
+    function shouldRenderColdGasDiagnostic(modeId = currentModeId) { return showColdGasOverlay || modeId === 'infrared' || modeId === 'spectroscopy' || modeId === 'radio'; }
 
     function updateDirectorCameraLock(exactCenter = false) {
         if (!isDirectorMode || isPaused) return;
@@ -1025,6 +1046,7 @@
     document.getElementById('showBackgroundLensing').addEventListener('change',(e)=>{showBackgroundLensing=e.target.checked;});
     document.getElementById('useObservationSynthesis').addEventListener('change',(e)=>{useObservationSynthesis=e.target.checked;});
     document.getElementById('reduceResolvedOldStars').addEventListener('change',(e)=>{reduceResolvedOldStars=e.target.checked;});
+    document.getElementById('enableOldStarConsolidation').addEventListener('change',(e)=>{enableOldStarConsolidation=e.target.checked;});
     document.getElementById('showPopulationMaps').addEventListener('change',(e)=>{showPopulationMaps=e.target.checked;});
     document.getElementById('showGasPhaseMaps').addEventListener('change',(e)=>{showGasPhaseMaps=e.target.checked;});
 
@@ -1035,9 +1057,10 @@
     let showDarkMatter=true,showJets=true,showGrid=true,showStreaks=true,showBackgroundUniverse=true,showEnhancedCore=true;
     let showHIIRegions=true,showAccretionDisks=true,showJetLobes=true,showEvolvingDust=true,showForegroundStars=true,showBackgroundLensing=true,showColdGasOverlay=false;
     let useRealisticColors = true, useLeapfrog = true, useCinematicDepth = true;
-    let useObservationSynthesis = true, reduceResolvedOldStars = true, showPopulationMaps = true, showGasPhaseMaps = true;
+    let useObservationSynthesis = true, reduceResolvedOldStars = true, enableOldStarConsolidation = true, showPopulationMaps = true, showGasPhaseMaps = true;
     let bgStars = [], bgGalaxies = [], foregroundStars = [];
     let hiiRegions = [], jetLobes = [];
+    let consolidatedStellarPopulations = [{mass:0, light:0, count:0}, {mass:0, light:0, count:0}];
     let hiiRegionIdCounter = 0, jetLobeIdCounter = 0;
     const MAX_HII_REGIONS = 900, MAX_JET_LOBES = 90, MAX_FOREGROUND_STARS = 32;
     
@@ -1052,11 +1075,11 @@
     let dataRecordPart = 1;
     const DATA_RECORD_HEADERS = [
         "time_myr", "stability_index", "total_energy", "kinetic_energy", "potential_energy",
-        "primary_bh_mass_msun", "star_count", "gas_cloud_count", "stellar_mass_msun", "gas_mass_msun",
-        "instant_sfr_msun_per_yr", "cold_gas_mass_msun", "hot_gas_mass_msun", "cold_gas_fraction", "bh_accretion_rate",
+        "primary_bh_mass_sim_units", "resolved_star_count", "consolidated_old_star_count", "gas_cloud_count", "resolved_stellar_mass_sim_units", "total_stellar_mass_sim_units", "gas_mass_sim_units",
+        "instant_sfr_index_sim_units", "cold_gas_mass_sim_units", "hot_gas_mass_sim_units", "cold_gas_fraction", "bh_accretion_index",
         "stellar_metallicity_gradient", "gas_metallicity_gradient",
         "rotation_radii_pc", "rotation_model_total_km_s", "rotation_baryonic_km_s", "rotation_dark_matter_km_s", "rotation_star_median_km_s", "rotation_gas_median_km_s",
-        "sfr_history_time_myr", "sfr_history_msun_per_yr",
+        "sfr_history_time_myr", "sfr_history_index_sim_units",
         "metallicity_radii_pc", "stellar_metallicity_z", "gas_metallicity_z",
         "observation_filter", "galaxy_a_type", "galaxy_a_stage", "galaxy_b_type", "galaxy_b_stage", "simulation_mode"
     ];
@@ -1093,7 +1116,10 @@
         stabilityIndex = Math.min(100, Math.max(0, (energy.kinetic / Math.max(Math.abs(energy.potential), 1e-9)) * 100));
         let starGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.starFit.b : 0;
         let gasGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.gasFit.b : 0;
-        let tStarMass = stars.reduce((sum, s) => sum + (Number.isFinite(s.mass) ? s.mass : 0), 0);
+        let resolvedStarMass = stars.reduce((sum, s) => sum + (Number.isFinite(s.mass) ? s.mass : 0), 0);
+        let consolidatedStarMass = consolidatedStellarPopulations.reduce((sum, p) => sum + (Number.isFinite(p.mass) ? p.mass : 0), 0);
+        let tStarMass = resolvedStarMass + consolidatedStarMass;
+        let consolidatedStarCount = consolidatedStellarPopulations.reduce((sum, p) => sum + (p.count || 0), 0);
 
         let rCurv = scienceState.rotationCurve || {radii:[], modelTotal:[], modelBaryon:[], modelDarkMatter:[], starMedian:[], gasMedian:[]};
         let mGrad = scienceState.metallicityGradient || {radii:[], starZ:[], gasZ:[]};
@@ -1101,7 +1127,7 @@
 
         return [
             timeMyr.toFixed(2), stabilityIndex.toFixed(2), lastEnergy.total.toExponential(4), lastEnergy.kinetic.toExponential(4), lastEnergy.potential.toExponential(4),
-            blackHoles[0] ? blackHoles[0].mass.toFixed(2) : 0, stars.length, gasClouds.length, tStarMass.toFixed(2), totalGasMassCached.toFixed(2),
+            blackHoles[0] ? blackHoles[0].mass.toFixed(2) : 0, stars.length, consolidatedStarCount, gasClouds.length, resolvedStarMass.toFixed(2), tStarMass.toFixed(2), totalGasMassCached.toFixed(2),
             instantaneousSFR.toFixed(4), coldGasMass.toFixed(2), hotGasMass.toFixed(2), (coldGasMass/(coldGasMass+hotGasMass+0.001)).toFixed(4), bhAccretionRateLast.toFixed(6),
             starGrad.toFixed(6), gasGrad.toFixed(6),
 
@@ -1868,7 +1894,7 @@
                 sciStats.innerHTML = "<i>Awaiting star formation events...</i>";
                 return;
             }
-            const ds = [{ label: 'Raw SFR (M☉/yr)', color: '#f59e0b', width: 1.5, data: h.map(b => [b.tMid, b.sfrMass]) }];
+            const ds = [{ label: 'SFR Index (sim units)', color: '#f59e0b', width: 1.5, data: h.map(b => [b.tMid, b.sfrMass]) }];
             
             if (h.length > 2) {
                 let smoothed = [];
@@ -1907,9 +1933,9 @@
             const h = scienceState.bhFueling.history;
             if (h.length === 0) return;
             const ds = [
-                { label: 'Accretion (M☉/step)', color: '#f59e0b', width: 2, data: h.map(b => [b.tMid, b.rate]) }
+                { label: 'Accretion Index', color: '#f59e0b', width: 2, data: h.map(b => [b.tMid, b.rate]) }
             ];
-            drawScienceChart(ds, null, `Current Accretion: ${bhAccretionRateLast.toFixed(4)} M☉/step`);
+            drawScienceChart(ds, null, `Current Accretion Index: ${bhAccretionRateLast.toFixed(4)}`);
         }
         
         scienceState.lastUpdateFrame = frameCount;
@@ -2846,6 +2872,53 @@
         return { alpha, size, warmMix };
     }
 
+    function getGalaxyMaturityFactor(galaxyIndex) {
+        const timeMyr = elapsedTime / 1e6;
+        const timeFactor = smoothstep(180, 1050, timeMyr);
+        const resolvedCount = stars.reduce((sum, s) => sum + (s.galaxyIndex === galaxyIndex ? 1 : 0), 0);
+        const consolidatedCount = consolidatedStellarPopulations[galaxyIndex] ? consolidatedStellarPopulations[galaxyIndex].count : 0;
+        const targetCount = Math.max(2000, parseInt(starCountSlider.value || "20000", 10) / Math.max(1, blackHoles.length));
+        const populationFactor = clamp((resolvedCount + consolidatedCount * 0.35) / targetCount, 0.25, 1.0);
+        return clamp(0.18 + 0.82 * Math.max(timeFactor, populationFactor * 0.65), 0.18, 1.0);
+    }
+
+    function isProtectedStar(star) {
+        return star === trackingTarget || star === spectroscopyTarget || astrometryTargets.includes(star) || hoveredStar === star;
+    }
+
+    function shouldConsolidateStar(star) {
+        if (!enableOldStarConsolidation || !useObservationSynthesis || !reduceResolvedOldStars) return false;
+        if (!star || isProtectedStar(star)) return false;
+        if ((elapsedTime / 1e6) < 500) return false;
+        if (star.ageMyr < 520) return false;
+        if (star.initialMass > 2.2) return false;
+        if (star.stage === 'GIANT' || star.stage === 'SN') return false;
+        if ((star.luminosity || 0) > 8.0) return false;
+        return true;
+    }
+
+    function consolidateOldStellarPopulations() {
+        if (!enableOldStarConsolidation || !useObservationSynthesis) return;
+        const timeMyr = elapsedTime / 1e6;
+        if (timeMyr < 500 || stars.length < 1000) return;
+        const targetCapacity = Math.max(2000, parseInt(starCountSlider.value || "20000", 10));
+        const softCap = Math.floor(targetCapacity * (timeMyr < 800 ? 1.75 : 1.20));
+        if (stars.length <= softCap) return;
+        const maxRemove = Math.min(260, Math.max(20, Math.floor((stars.length - softCap) * 0.015)));
+        let removed = 0;
+        for (let i = stars.length - 1; i >= 0 && removed < maxRemove; i--) {
+            const s = stars[i];
+            if (!shouldConsolidateStar(s)) continue;
+            const gi = clamp(s.galaxyIndex || 0, 0, consolidatedStellarPopulations.length - 1);
+            const pop = consolidatedStellarPopulations[gi];
+            pop.mass += Number.isFinite(s.mass) ? s.mass : (s.initialMass || 0);
+            pop.light += Math.max(0.001, s.luminosity || 0.001);
+            pop.count += 1;
+            stars.splice(i, 1);
+            removed++;
+        }
+    }
+
     function getStarRenderParams(star, modeId) {
         let r, g, b, a;
         let baseA = Math.min(1.0, 0.4 + (Math.min(1, Math.pow(star.mass/starMass, 0.05) * (star.temperature/6000))) * 0.6);
@@ -2879,6 +2952,10 @@
         } else if (modeId === 'xray') {
             a = 0.0; 
             if (star.temperature > 25000) { r=0.0; g=0.8; b=1.0; a = baseA * 0.5; sSize *= 0.8; }
+        } else if (modeId === 'radio') {
+            r = 0.05; g = 0.22; b = 0.18;
+            a = baseA * (star.initialMass > 8.0 ? 0.045 : 0.012);
+            sSize *= 0.35;
         } else if (modeId === 'spectroscopy') {
             let z = Math.min(2.0, star.metallicity);
             if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; } 
@@ -3051,6 +3128,17 @@
             }
             else {
                 a=0.0;
+            }
+        }
+        else if (modeId === 'radio') {
+            if (coldness > 0.35) {
+                r = 0.04; g = 0.95; b = 0.72;
+                a = (0.10 + 0.16 * coldness + Math.max(0, coldGain - 1.0) * 0.055) * shimmer;
+                cSize *= 0.46 + 0.28 * Math.min(2.5, coldGain);
+            } else {
+                r = 0.10; g = 0.32; b = 0.78;
+                a *= 0.035;
+                cSize *= 0.45;
             }
         }
         else if (modeId === 'spectroscopy') {
@@ -3322,7 +3410,7 @@
         if (!useObservationSynthesis) return;
         if (!showPopulationMaps && !showGasPhaseMaps) return;
         const m = highResMult;
-        if (showPopulationMaps && currentModeId !== 'spectroscopy') {
+        if (showPopulationMaps && currentModeId !== 'spectroscopy' && currentModeId !== 'radio') {
             for (let g = 0; g < blackHoles.length; g++) {
                 const bh = blackHoles[g];
                 if (!bh) continue;
@@ -3337,6 +3425,10 @@
                 const diskR = Math.max(28 * m, galaxyRadius * p.sf * scale * m * 1.24);
                 if (diskR > 3 && p.sx > -diskR && p.sx < ctx.canvas.width + diskR && p.sy > -diskR && p.sy < ctx.canvas.height + diskR) {
                     let oldCol = style.old.slice(); let oldA = style.oldA;
+                    const maturity = getGalaxyMaturityFactor(g);
+                    const consolidated = consolidatedStellarPopulations[g] || {mass:0, light:0, count:0};
+                    const consolidatedBoost = clamp(Math.log10(1 + consolidated.mass) * 0.12, 0, 0.55);
+                    oldA *= (0.32 + 0.68 * maturity) * (1.0 + consolidatedBoost * maturity);
                     const att = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, oldCol, oldA, 'old');
                     oldCol = att.color; oldA = att.alpha;
                     drawEllipticalRadial(ctx, p.sx, p.sy, diskR, diskR * flatten, angle, [
@@ -3349,6 +3441,8 @@
                 const bulgeR = Math.max(18 * m, bulgeRadius * p.sf * scale * m * 1.05);
                 if (bulgeR > 2) {
                     let bCol = style.bulge.slice(); let bA = style.bulgeA;
+                    const maturityB = getGalaxyMaturityFactor(g);
+                    bA *= (0.46 + 0.54 * maturityB);
                     const attB = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, bCol, bA, 'bulge');
                     bCol = attB.color; bA = attB.alpha;
                     drawEllipticalRadial(ctx, p.sx, p.sy, bulgeR, bulgeR * clamp(flatten + 0.08, 0.35, 1.0), angle, [
@@ -3359,7 +3453,7 @@
                     ]);
                 }
                 if (preset && preset.type === 'spiral' && !isPostMerger && currentModeId !== 'xray') {
-                    const armA = style.youngA * (stage === 'dying' ? 0.55 : 1.0);
+                    const armA = style.youngA * (stage === 'dying' ? 0.55 : 1.0) * (0.58 + 0.42 * getGalaxyMaturityFactor(g));
                     const armCol = style.young;
                     for (let arm = 0; arm < Math.max(1, preset.armCount || 2); arm++) {
                         drawSpiralPath(ctx, bh, preset, arm, bulgeRadius * 0.72, galaxyRadius * 1.10, 0.18, armCol, armA * 0.55, 28, 'screen');
@@ -3401,6 +3495,10 @@
             } else if (currentModeId === 'infrared') {
                 if (heat > 1200) continue;
                 color = [255,112,38]; alpha = 0.010; radiusMult = 1.3;
+            } else if (currentModeId === 'radio') {
+                const coldness = clamp(1.0 - (heat - 12.0) / 55.0, 0.0, 1.0);
+                if (coldness < 0.25) continue;
+                color = [40,255,195]; alpha = 0.020 + coldness * 0.050; radiusMult = 1.85;
             }
             if (!color) continue;
             const p = projectGalaxyPoint(c.x, c.y, c.z);
@@ -4246,7 +4344,10 @@
           updateDirectorCameraLock(false);
       }
 
-      if(!isPaused && !isCapturingSequence) updatePhysics(physicsSteps);
+      if(!isPaused && !isCapturingSequence) {
+          updatePhysics(physicsSteps);
+          if (frameCount % 12 === 0) consolidateOldStellarPopulations();
+      }
 
       if (isDirectorMode && !isPaused) {
           updateDirectorCameraLock(true);
@@ -4475,7 +4576,7 @@
           hudPhase.className = "hud-value val-cool";
       }
       
-      document.getElementById('hud-sfr').textContent = instantaneousSFR.toFixed(2) + ' M☉/Myr';
+      document.getElementById('hud-sfr').textContent = instantaneousSFR.toFixed(2) + ' sim';
       document.getElementById('hud-bh-a').textContent = blackHoles[0] ? blackHoles[0].mass.toFixed(1) + ' M☉' : '0 M☉';
       
       // Hide Beta BH UI in Single Mode
@@ -4587,7 +4688,7 @@
       }
 
       blackHoles.forEach(initBlackHoleVisualState);
-      stars = []; gasClouds = []; jetParticles = []; astrometryTargets = []; spectroscopyTarget = null; remnants = []; hiiRegions = []; jetLobes = [];
+      stars = []; gasClouds = []; jetParticles = []; astrometryTargets = []; spectroscopyTarget = null; remnants = []; hiiRegions = []; jetLobes = []; consolidatedStellarPopulations = [{mass:0, light:0, count:0}, {mass:0, light:0, count:0}];
       hiiRegionIdCounter = 0; jetLobeIdCounter = 0; 
       
       for(let g=0; g<blackHoles.length; g++) {
